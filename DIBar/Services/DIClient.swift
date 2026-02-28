@@ -29,46 +29,13 @@ enum DIClient {
     // MARK: - Authenticate
 
     static func authenticate(email: String, password: String) async throws -> AuthResponse {
-        guard let url = URL(string: "\(baseURL)/members/authenticate") else {
-            throw DIClientError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
         let body = "username=\(formEncode(email))&password=\(formEncode(password))"
-        request.httpBody = body.data(using: .utf8)
+        return try await authenticateMember(body: body)
+    }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw DIClientError.networkError(URLError(.badServerResponse))
-        }
-
-        log.info("auth: HTTP \(http.statusCode)")
-        log.info("auth raw keys: \(extractTopLevelKeys(from: data))")
-        if let raw = String(data: data, encoding: .utf8) {
-            log.info("auth raw (500): \(raw.prefix(500))")
-        }
-
-        if http.statusCode == 403 || http.statusCode == 401 {
-            throw DIClientError.authFailed
-        }
-
-        guard (200...299).contains(http.statusCode) else {
-            throw DIClientError.httpError(http.statusCode)
-        }
-
-        do {
-            let result = try JSONDecoder().decode(AuthResponse.self, from: data)
-            log.info("auth decoded: resolvedMemberId=\(result.resolvedMemberId?.description ?? "nil")")
-            return result
-        } catch {
-            log.error("auth decode error: \(error)")
-            throw DIClientError.decodingError(error)
-        }
+    static func fetchMembership(apiKey: String) async throws -> AuthResponse {
+        let body = "api_key=\(formEncode(apiKey))"
+        return try await authenticateMember(body: body)
     }
 
     // MARK: - Fetch Channels
@@ -226,5 +193,46 @@ enum DIClient {
     private static func extractTopLevelKeys(from data: Data) -> [String] {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         return Array(json.keys).sorted()
+    }
+
+    private static func authenticateMember(body: String) async throws -> AuthResponse {
+        guard let url = URL(string: "\(baseURL)/members/authenticate") else {
+            throw DIClientError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body.data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw DIClientError.networkError(URLError(.badServerResponse))
+        }
+
+        log.info("auth: HTTP \(http.statusCode)")
+        log.info("auth raw keys: \(extractTopLevelKeys(from: data))")
+        if let raw = String(data: data, encoding: .utf8) {
+            log.info("auth raw (500): \(raw.prefix(500))")
+        }
+
+        if http.statusCode == 403 || http.statusCode == 401 {
+            throw DIClientError.authFailed
+        }
+
+        guard (200...299).contains(http.statusCode) else {
+            throw DIClientError.httpError(http.statusCode)
+        }
+
+        do {
+            let result = try JSONDecoder().decode(AuthResponse.self, from: data)
+            log.info("auth decoded: resolvedMemberId=\(result.resolvedMemberId?.description ?? "nil")")
+            return result
+        } catch {
+            log.error("auth decode error: \(error)")
+            throw DIClientError.decodingError(error)
+        }
     }
 }

@@ -47,6 +47,7 @@ struct AuthResponse: Codable {
     let memberId: Int?
     let apiKey: String?
     let member: AuthMember?
+    let subscriptions: [MembershipSubscription]?
 
     struct AuthMember: Codable {
         let id: Int?
@@ -58,11 +59,79 @@ struct AuthResponse: Codable {
         case memberId = "member_id"
         case apiKey = "api_key"
         case member
+        case subscriptions
     }
 
     var resolvedMemberId: Int? {
         id ?? memberId ?? member?.id
     }
+}
+
+// MARK: - Membership
+
+struct MembershipPlan: Codable, Equatable {
+    let id: Int?
+    let key: String?
+    let name: String?
+}
+
+struct MembershipSubscription: Codable, Equatable {
+    let id: Int?
+    let status: String?
+    let autoRenew: Bool?
+    let renewalType: Int?
+    let trial: Bool?
+    let planId: Int?
+    let expiresOn: String?
+    let firstTrialAt: String?
+    let memberId: Int?
+    let networkId: Int?
+    let plan: MembershipPlan?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, trial, plan
+        case autoRenew = "auto_renew"
+        case renewalType = "renewal_type"
+        case planId = "plan_id"
+        case expiresOn = "expires_on"
+        case firstTrialAt = "first_trial_at"
+        case memberId = "member_id"
+        case networkId = "network_id"
+    }
+
+    var expiresOnDate: Date? {
+        guard let expiresOn else { return nil }
+        return Self.dateOnlyFormatter.date(from: expiresOn)
+    }
+
+    var firstTrialDate: Date? {
+        guard let firstTrialAt else { return nil }
+        if let parsed = Self.internetDateFormatter.date(from: firstTrialAt) {
+            return parsed
+        }
+        return Self.internetDateNoFractionFormatter.date(from: firstTrialAt)
+    }
+
+    private static let dateOnlyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let internetDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let internetDateNoFractionFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }
 
 // MARK: - Favorites
@@ -114,9 +183,11 @@ struct NowPlaying: Equatable {
     let channelName: String
     let artist: String
     let title: String
+    let trackId: Int?
     let artURL: URL?
     let duration: Int
     let startedAt: Date?
+    let elapsedOverride: Int?
     let upVotes: Int
     let downVotes: Int
 

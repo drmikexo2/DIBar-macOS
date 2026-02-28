@@ -6,6 +6,10 @@ private let log = Logger(subsystem: "com.dibar", category: "AppState")
 @Observable
 @MainActor
 final class AppState {
+    private static let favoriteStationKey = "favorite_station_id"
+    static let subscriptionURL = URL(string: "https://www.di.fm/account/subscriptions")!
+    private var didBootstrap = false
+
     // Auth
     var isLoggedIn: Bool = false
     var listenKey: String?
@@ -27,6 +31,7 @@ final class AppState {
         }
         return .premiumHigh
     }()
+    var membershipSubscription: MembershipSubscription?
 
     // UI
     var isLoading: Bool = false
@@ -46,9 +51,41 @@ final class AppState {
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
+    var membershipSummaryLine: String {
+        guard let subscription = membershipSubscription else { return "Unavailable" }
+
+        let status = subscription.status?.capitalized ?? "Unknown"
+        return "Subscription (\(status))"
+    }
+
+    var membershipDetailLine: String {
+        guard let subscription = membershipSubscription else { return "Tap to manage subscription" }
+
+        var parts: [String] = []
+        if let memberSince = subscription.firstTrialDate {
+            parts.append("Member since \(Self.readableDateFormatter.string(from: memberSince))")
+        }
+        if let expiresOn = subscription.expiresOnDate {
+            let prefix = (subscription.autoRenew ?? false) ? "Renews" : "Expires"
+            parts.append("\(prefix) \(Self.readableDateFormatter.string(from: expiresOn))")
+        }
+        if parts.isEmpty {
+            return "Tap to manage subscription"
+        }
+        return parts.joined(separator: " • ")
+    }
+
     // MARK: - Lifecycle
 
+    init() {
+        Task { [weak self] in
+            await self?.bootstrap()
+        }
+    }
+
     func bootstrap() async {
+        guard !didBootstrap else { return }
+        didBootstrap = true
         log.info("bootstrap: checking stored credentials")
         if let key = KeychainHelper.read(key: "listen_key") {
             listenKey = key
@@ -61,7 +98,13 @@ final class AppState {
             }
             log.info("bootstrap: apiKey=\(self.apiKey != nil ? "present" : "nil")")
             isLoggedIn = true
-            await loadChannels()
+            if apiKey != nil {
+                async let channelsLoad: Void = loadChannels()
+                async let membershipLoad: Void = loadMembership()
+                _ = await (channelsLoad, membershipLoad)
+            } else {
+                await loadChannels()
+            }
         } else {
             log.info("bootstrap: no stored listen_key")
         }
@@ -89,6 +132,7 @@ final class AppState {
             }
             listenKey = response.listenKey
             apiKey = response.apiKey
+            membershipSubscription = response.subscriptions?.first
             isLoggedIn = true
             await loadChannels()
         } catch {
@@ -107,6 +151,7 @@ final class AppState {
         listenKey = nil
         apiKey = nil
         memberId = nil
+        membershipSubscription = nil
         isLoggedIn = false
         channels = []
         favoriteChannelIds = []
@@ -123,6 +168,7 @@ final class AppState {
             channels = try await DIClient.fetchChannels(listenKey: key, quality: selectedQuality)
             log.info("loadChannels: \(self.channels.count) channels loaded")
             await loadFavorites()
+            restoreSavedStationIfNeeded()
         } catch {
             errorMessage = error.localizedDescription
             log.error("loadChannels error: \(error.localizedDescription)")
@@ -140,10 +186,30 @@ final class AppState {
         log.info("loadFavorites: \(self.favoriteChannelIds.count) favorites set, favoriteChannels=\(self.favoriteChannels.count)")
     }
 
+    func loadMembership() async {
+        guard let ak = apiKey else {
+            membershipSubscription = nil
+            return
+        }
+
+        do {
+            let profile = try await DIClient.fetchMembership(apiKey: ak)
+            membershipSubscription = profile.subscriptions?.first
+            if let resolvedMemberId = profile.resolvedMemberId, resolvedMemberId != memberId {
+                memberId = resolvedMemberId
+                KeychainHelper.save(key: "member_id", value: String(resolvedMemberId))
+            }
+            log.info("loadMembership: subscription present=\(self.membershipSubscription != nil)")
+        } catch {
+            log.error("loadMembership error: \(error.localizedDescription)")
+        }
+    }
+
     func playChannel(_ channel: Channel) {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality)
         else { return }
+        KeychainHelper.save(key: Self.favoriteStationKey, value: String(channel.id))
         log.info("playChannel: \(channel.name) -> \(url)")
         audioPlayer.play(channel: channel, streamURL: url)
     }
@@ -151,4 +217,25 @@ final class AppState {
     func togglePlayPause() {
         audioPlayer.togglePlayPause()
     }
+
+    private func restoreSavedStationIfNeeded() {
+        guard audioPlayer.currentChannel == nil else { return }
+        guard let raw = KeychainHelper.read(key: Self.favoriteStationKey),
+              let channelId = Int(raw)
+        else { return }
+        guard let channel = channels.first(where: { $0.id == channelId }) else {
+            log.warning("restoreSavedStationIfNeeded: saved station id=\(raw, privacy: .public) not found in channel list")
+            return
+        }
+
+        log.info("restoreSavedStationIfNeeded: restoring '\(channel.name, privacy: .public)'")
+        playChannel(channel)
+    }
+
+    private static let readableDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }

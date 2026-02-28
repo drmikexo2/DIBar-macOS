@@ -18,8 +18,5 @@ struct MenuBarView: View {
             }
         }
         .frame(width: 320)
-        .task {
-            await appState.bootstrap()
-        }
     }
 }

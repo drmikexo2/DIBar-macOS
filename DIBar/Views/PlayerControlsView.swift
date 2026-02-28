@@ -8,49 +8,20 @@ struct PlayerControlsView: View {
     @State private var artExpanded = false
 
     private var player: AudioPlayer { appState.audioPlayer }
+    private let expandedArtSize: CGFloat = 220
 
     var body: some View {
         VStack(spacing: 8) {
             if let track = player.currentTrack {
-                HStack(spacing: 10) {
-                    // Album art — single view, changes size on tap
-                    if let nsImage = player.currentArtImage {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .aspectRatio(contentMode: artExpanded ? .fit : .fill)
-                            .frame(width: artExpanded ? nil : 48, height: artExpanded ? nil : 48)
-                            .frame(maxWidth: artExpanded ? .infinity : nil)
-                            .clipShape(RoundedRectangle(cornerRadius: artExpanded ? 8 : 6))
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.2)) { artExpanded.toggle() }
-                            }
-                            .cursor(.pointingHand)
-                    } else if !artExpanded {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(.quaternary)
-                            .overlay {
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .frame(width: 48, height: 48)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                if artExpanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        expandedArtwork
+                        trackInfoView(track: track, lineLimit: 2)
                     }
-
-                    if !artExpanded {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(track.channelName)
-                                .font(.system(size: 12, weight: .semibold))
-                                .lineLimit(1)
-
-                            Text(track.displayText)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-
-                            TrackMetaRow(track: track)
-                        }
-
+                } else {
+                    HStack(spacing: 10) {
+                        collapsedArtwork
+                        trackInfoView(track: track, lineLimit: 1)
                         Spacer(minLength: 0)
                     }
                 }
@@ -87,7 +58,7 @@ struct PlayerControlsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .onChange(of: player.currentTrack) { _, _ in
+        .onChange(of: player.currentTrackIdentityToken) { _, _ in
             artExpanded = false
         }
         #if DEBUG
@@ -100,6 +71,72 @@ struct PlayerControlsView: View {
             }
         }
         #endif
+    }
+
+    private var collapsedArtwork: some View {
+        Group {
+            if let nsImage = player.currentArtImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.quaternary)
+                    .overlay {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
+                    }
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onTapGesture { toggleArtworkExpansion() }
+        .cursor(.pointingHand)
+    }
+
+    private var expandedArtwork: some View {
+        Group {
+            if let nsImage = player.currentArtImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.quaternary)
+                    .overlay {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.tertiary)
+                    }
+            }
+        }
+        .frame(width: expandedArtSize, height: expandedArtSize)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity)
+        .onTapGesture { toggleArtworkExpansion() }
+        .cursor(.pointingHand)
+    }
+
+    private func trackInfoView(track: NowPlaying, lineLimit: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(track.channelName)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+
+            Text(track.displayText)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(lineLimit)
+
+            TrackMetaRow(track: track)
+        }
+    }
+
+    private func toggleArtworkExpansion() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            artExpanded.toggle()
+        }
     }
 }
 
@@ -139,15 +176,29 @@ struct TrackMetaRow: View {
             }
 
             // Elapsed / Duration
-            if track.duration > 0, let startedAt = track.startedAt {
-                let elapsed = min(Int(now.timeIntervalSince(startedAt)), track.duration)
+            if let elapsed = elapsedSeconds {
                 Spacer(minLength: 0)
-                Text("\(NowPlaying.formatTime(max(elapsed, 0))) / \(NowPlaying.formatTime(track.duration))")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                if track.duration > 0 {
+                    let clamped = min(max(elapsed, 0), track.duration)
+                    Text("\(NowPlaying.formatTime(clamped)) / \(NowPlaying.formatTime(track.duration))")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    Text("\(NowPlaying.formatTime(max(elapsed, 0)))")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
         }
         .font(.system(size: 10))
         .onReceive(timer) { now = $0 }
+    }
+
+    private var elapsedSeconds: Int? {
+        if let override = track.elapsedOverride {
+            return max(override, 0)
+        }
+        guard let startedAt = track.startedAt else { return nil }
+        return max(Int(now.timeIntervalSince(startedAt)), 0)
     }
 }
