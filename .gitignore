@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+
+# Build products and local artifacts
+build/
+DerivedData/
+*.app/
+
+# SwiftPM
+.build/
+
+# Local tooling
+.codex/
