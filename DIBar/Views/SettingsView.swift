@@ -35,13 +35,9 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Membership")
+                        Text(appState.membershipHeaderLine)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                        Text(appState.membershipSummaryLine)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
                         Text(appState.membershipDetailLine)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)

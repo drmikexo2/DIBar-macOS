@@ -9,9 +9,11 @@ xcuserdata/
 build/
 DerivedData/
 *.app/
+dist/
 
 # SwiftPM
 .build/
 
 # Local tooling
 .codex/
+.claude/

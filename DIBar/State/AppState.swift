@@ -51,19 +51,19 @@ final class AppState {
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    var membershipSummaryLine: String {
-        guard let subscription = membershipSubscription else { return "Unavailable" }
-
-        let status = subscription.status?.capitalized ?? "Unknown"
-        return "Subscription (\(status))"
+    var membershipHeaderLine: String {
+        guard let status = membershipSubscription?.status?.capitalized, !status.isEmpty else {
+            return "Membership"
+        }
+        return "Membership (\(status))"
     }
 
     var membershipDetailLine: String {
         guard let subscription = membershipSubscription else { return "Tap to manage subscription" }
 
         var parts: [String] = []
-        if let memberSince = subscription.firstTrialDate {
-            parts.append("Member since \(Self.readableDateFormatter.string(from: memberSince))")
+        if let startedAt = subscription.startedDate {
+            parts.append("Started \(Self.readableDateFormatter.string(from: startedAt))")
         }
         if let expiresOn = subscription.expiresOnDate {
             let prefix = (subscription.autoRenew ?? false) ? "Renews" : "Expires"

@@ -84,6 +84,7 @@ struct MembershipSubscription: Codable, Equatable {
     let planId: Int?
     let expiresOn: String?
     let firstTrialAt: String?
+    let createdAt: String?
     let memberId: Int?
     let networkId: Int?
     let plan: MembershipPlan?
@@ -95,6 +96,7 @@ struct MembershipSubscription: Codable, Equatable {
         case planId = "plan_id"
         case expiresOn = "expires_on"
         case firstTrialAt = "first_trial_at"
+        case createdAt = "created_at"
         case memberId = "member_id"
         case networkId = "network_id"
     }
@@ -106,10 +108,16 @@ struct MembershipSubscription: Codable, Equatable {
 
     var firstTrialDate: Date? {
         guard let firstTrialAt else { return nil }
-        if let parsed = Self.internetDateFormatter.date(from: firstTrialAt) {
-            return parsed
-        }
-        return Self.internetDateNoFractionFormatter.date(from: firstTrialAt)
+        return Self.parseInternetDate(firstTrialAt)
+    }
+
+    var createdAtDate: Date? {
+        guard let createdAt else { return nil }
+        return Self.parseInternetDate(createdAt)
+    }
+
+    var startedDate: Date? {
+        firstTrialDate ?? createdAtDate
     }
 
     private static let dateOnlyFormatter: DateFormatter = {
@@ -132,6 +140,13 @@ struct MembershipSubscription: Codable, Equatable {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
+
+    private static func parseInternetDate(_ raw: String) -> Date? {
+        if let parsed = internetDateFormatter.date(from: raw) {
+            return parsed
+        }
+        return internetDateNoFractionFormatter.date(from: raw)
+    }
 }
 
 // MARK: - Favorites
