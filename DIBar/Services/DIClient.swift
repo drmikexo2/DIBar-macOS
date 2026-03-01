@@ -41,7 +41,7 @@ enum DIClient {
     // MARK: - Fetch Channels
 
     static func fetchChannels(listenKey: String, quality: StreamQuality) async throws -> [Channel] {
-        guard let url = URL(string: "\(baseURL)/mobile/batch_update?stream_set_key=\(quality.rawValue)&listen_key=\(urlEncode(listenKey))") else {
+        guard let url = URL(string: "\(baseURL)/channel_filters") else {
             throw DIClientError.invalidURL
         }
 
@@ -58,36 +58,16 @@ enum DIClient {
         log.info("channels: HTTP \(http.statusCode), \(data.count) bytes")
 
         do {
-            let decoder = JSONDecoder()
-
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let filtersArray = json["channel_filters"] as? [[String: Any]] {
-                var channels: [Channel] = []
-                for filter in filtersArray {
-                    if let channelsArray = filter["channels"] as? [[String: Any]] {
-                        let channelData = try JSONSerialization.data(withJSONObject: channelsArray)
-                        let parsed = try decoder.decode([Channel].self, from: channelData)
-                        channels.append(contentsOf: parsed)
-                    }
-                }
-                var seen = Set<Int>()
-                channels = channels.filter { seen.insert($0.id).inserted }
-                if !channels.isEmpty {
-                    log.info("channels: \(channels.count) from channel_filters")
-                    return channels
+            let filters = try JSONDecoder().decode([ChannelFilter].self, from: data)
+            var channels: [Channel] = []
+            for filter in filters {
+                if let filterChannels = filter.channels {
+                    channels.append(contentsOf: filterChannels)
                 }
             }
-
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let channelsArray = json["channels"] as? [[String: Any]] {
-                let channelData = try JSONSerialization.data(withJSONObject: channelsArray)
-                let channels = try decoder.decode([Channel].self, from: channelData)
-                log.info("channels: \(channels.count) from top-level channels key")
-                return channels
-            }
-
-            let channels = try decoder.decode([Channel].self, from: data)
-            log.info("channels: \(channels.count) from direct array")
+            var seen = Set<Int>()
+            channels = channels.filter { seen.insert($0.id).inserted }
+            log.info("channels: \(channels.count) unique channels from channel_filters")
             return channels
         } catch {
             throw DIClientError.decodingError(error)

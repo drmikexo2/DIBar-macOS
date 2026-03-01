@@ -165,9 +165,11 @@ final class AppState {
         defer { isLoading = false }
 
         do {
-            channels = try await DIClient.fetchChannels(listenKey: key, quality: selectedQuality)
+            async let channelsFetch = DIClient.fetchChannels(listenKey: key, quality: selectedQuality)
+            async let favoritesFetch: Void = loadFavorites()
+            channels = try await channelsFetch
+            await favoritesFetch
             log.info("loadChannels: \(self.channels.count) channels loaded")
-            await loadFavorites()
             restoreSavedStationIfNeeded()
         } catch {
             errorMessage = error.localizedDescription
