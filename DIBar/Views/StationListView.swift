@@ -2,7 +2,7 @@ import SwiftUI
 
 struct StationListView: View {
     @Environment(AppState.self) private var appState
-    @State private var allStationsExpanded = KeychainHelper.read(key: "all_stations_expanded") != "0"
+    @State private var allStationsExpanded = Prefs.read(key: "all_stations_expanded") != "0"
     @State private var highlightedIndex: Int?
     @FocusState private var searchFocused: Bool
 
@@ -104,7 +104,7 @@ struct StationListView: View {
                             }
                         }
                     }
-                    .frame(height: 280)
+                    .frame(height: appState.artworkExpanded ? 180 : 280)
                     .onAppear {
                         searchFocused = true
                         if let playingId = appState.audioPlayer.currentChannel?.id,
@@ -121,7 +121,7 @@ struct StationListView: View {
             }
         }
         .onChange(of: allStationsExpanded) { _, expanded in
-            KeychainHelper.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
+            Prefs.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
         }
         .onChange(of: appState.searchText) { _, _ in
             highlightedIndex = nil

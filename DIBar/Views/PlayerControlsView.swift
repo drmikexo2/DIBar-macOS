@@ -5,7 +5,6 @@ private let log = Logger(subsystem: "com.dibar", category: "PlayerControls")
 
 struct PlayerControlsView: View {
     @Environment(AppState.self) private var appState
-    @State private var artExpanded = false
 
     private var player: AudioPlayer { appState.audioPlayer }
     private let expandedArtSize: CGFloat = 220
@@ -13,7 +12,7 @@ struct PlayerControlsView: View {
     var body: some View {
         VStack(spacing: 8) {
             if let track = player.currentTrack {
-                if artExpanded {
+                if appState.artworkExpanded {
                     VStack(alignment: .leading, spacing: 8) {
                         expandedArtwork
                         trackInfoView(track: track, lineLimit: 2)
@@ -62,15 +61,15 @@ struct PlayerControlsView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .onChange(of: player.currentTrackIdentityToken) { _, _ in
-            artExpanded = false
+            appState.artworkExpanded = false
         }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("debugToggleArt"))) { _ in
             let hasArt = player.currentArtImage != nil
-            log.error("DEBUG toggleArt: artExpanded=\(artExpanded, privacy: .public) hasArt=\(hasArt, privacy: .public)")
+            log.error("DEBUG toggleArt: appState.artworkExpanded=\(appState.artworkExpanded, privacy: .public) hasArt=\(hasArt, privacy: .public)")
             if hasArt {
-                withAnimation(.easeInOut(duration: 0.2)) { artExpanded.toggle() }
-                log.error("DEBUG toggleArt: artExpanded now=\(artExpanded, privacy: .public)")
+                withAnimation(.easeInOut(duration: 0.2)) { appState.artworkExpanded.toggle() }
+                log.error("DEBUG toggleArt: appState.artworkExpanded now=\(appState.artworkExpanded, privacy: .public)")
             }
         }
         #endif
@@ -163,7 +162,7 @@ struct PlayerControlsView: View {
 
     private func toggleArtworkExpansion() {
         withAnimation(.easeInOut(duration: 0.2)) {
-            artExpanded.toggle()
+            appState.artworkExpanded.toggle()
         }
     }
 }

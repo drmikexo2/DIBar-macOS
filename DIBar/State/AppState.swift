@@ -34,7 +34,7 @@ final class AppState {
 
     // Settings
     var selectedQuality: StreamQuality = {
-        if let raw = KeychainHelper.read(key: "quality"), let q = StreamQuality(rawValue: raw) {
+        if let raw = Prefs.read(key: "quality"), let q = StreamQuality(rawValue: raw) {
             return q
         }
         return .premiumHigh
@@ -46,9 +46,10 @@ final class AppState {
     var errorMessage: String?
     var subscriptionRequiredNetwork: Network?
     var searchFieldFocused: Bool = false
-    var showTrackInMenuBar: Bool = KeychainHelper.read(key: "show_track_in_menu_bar") == "1" {
+    var artworkExpanded: Bool = false
+    var showTrackInMenuBar: Bool = Prefs.read(key: "show_track_in_menu_bar") == "1" {
         didSet {
-            KeychainHelper.save(key: "show_track_in_menu_bar", value: showTrackInMenuBar ? "1" : "0")
+            Prefs.save(key: "show_track_in_menu_bar", value: showTrackInMenuBar ? "1" : "0")
         }
     }
 
@@ -162,22 +163,25 @@ final class AppState {
         guard !didBootstrap else { return }
         didBootstrap = true
 
+        // Move secrets that earlier versions kept in UserDefaults into the Keychain
+        KeychainHelper.migrateFromUserDefaults(keys: ["listen_key", "api_key"])
+
         // Migrate legacy last-station keys (old name "favorite_station_id" was
         // misleading — it stores the last played station, not a favorite)
-        if let oldStation = KeychainHelper.read(key: "favorite_station_id") {
-            KeychainHelper.save(key: "last_station_id.di", value: oldStation)
-            KeychainHelper.delete(key: "favorite_station_id")
+        if let oldStation = Prefs.read(key: "favorite_station_id") {
+            Prefs.save(key: "last_station_id.di", value: oldStation)
+            Prefs.delete(key: "favorite_station_id")
             log.info("bootstrap: migrated favorite_station_id to last_station_id.di")
         }
         for network in Network.allCases {
-            if let oldStation = KeychainHelper.read(key: "favorite_station_id.\(network.rawValue)") {
-                KeychainHelper.save(key: "last_station_id.\(network.rawValue)", value: oldStation)
-                KeychainHelper.delete(key: "favorite_station_id.\(network.rawValue)")
+            if let oldStation = Prefs.read(key: "favorite_station_id.\(network.rawValue)") {
+                Prefs.save(key: "last_station_id.\(network.rawValue)", value: oldStation)
+                Prefs.delete(key: "favorite_station_id.\(network.rawValue)")
             }
         }
 
         // Restore last selected network
-        if let raw = KeychainHelper.read(key: "selected_network"), let net = Network(rawValue: raw) {
+        if let raw = Prefs.read(key: "selected_network"), let net = Network(rawValue: raw) {
             selectedNetwork = net
             log.info("bootstrap: restored network=\(net.rawValue)")
         }
@@ -186,7 +190,7 @@ final class AppState {
         if let key = KeychainHelper.read(key: "listen_key") {
             listenKey = key
             apiKey = KeychainHelper.read(key: "api_key")
-            if let idStr = KeychainHelper.read(key: "member_id"), let id = Int(idStr) {
+            if let idStr = Prefs.read(key: "member_id"), let id = Int(idStr) {
                 memberId = id
                 log.info("bootstrap: found stored memberId=\(id)")
             } else {
@@ -220,7 +224,7 @@ final class AppState {
                 log.warning("login: apiKey is nil in auth response")
             }
             if let mid = response.resolvedMemberId {
-                KeychainHelper.save(key: "member_id", value: String(mid))
+                Prefs.save(key: "member_id", value: String(mid))
                 memberId = mid
                 log.info("login: memberId=\(mid)")
             } else {
@@ -243,12 +247,12 @@ final class AppState {
         audioPlayer.stop()
         KeychainHelper.delete(key: "listen_key")
         KeychainHelper.delete(key: "api_key")
-        KeychainHelper.delete(key: "member_id")
-        KeychainHelper.delete(key: "selected_network")
+        Prefs.delete(key: "member_id")
+        Prefs.delete(key: "selected_network")
         for network in Network.allCases {
-            KeychainHelper.delete(key: "last_station_id.\(network.rawValue)")
-            KeychainHelper.delete(key: "local_fav_added.\(network.rawValue)")
-            KeychainHelper.delete(key: "local_fav_removed.\(network.rawValue)")
+            Prefs.delete(key: "last_station_id.\(network.rawValue)")
+            Prefs.delete(key: "local_fav_added.\(network.rawValue)")
+            Prefs.delete(key: "local_fav_removed.\(network.rawValue)")
         }
         listenKey = nil
         apiKey = nil
@@ -269,7 +273,7 @@ final class AppState {
         guard network != selectedNetwork else { return }
         selectedNetwork = network
         searchText = ""
-        KeychainHelper.save(key: "selected_network", value: network.rawValue)
+        Prefs.save(key: "selected_network", value: network.rawValue)
 
         if networkDataCache[network]?.isLoaded == true {
             return
@@ -379,7 +383,7 @@ final class AppState {
     /// and re-applied on top of whatever the server returns.
     private func localFavoriteOverrides(for network: Network) -> (added: Set<Int>, removed: Set<Int>) {
         func read(_ key: String) -> Set<Int> {
-            Set((KeychainHelper.read(key: "\(key).\(network.rawValue)") ?? "")
+            Set((Prefs.read(key: "\(key).\(network.rawValue)") ?? "")
                 .split(separator: ",").compactMap { Int($0) })
         }
         return (read("local_fav_added"), read("local_fav_removed"))
@@ -394,13 +398,13 @@ final class AppState {
             removed.insert(channelId)
             added.remove(channelId)
         }
-        KeychainHelper.save(key: "local_fav_added.\(network.rawValue)", value: added.map(String.init).joined(separator: ","))
-        KeychainHelper.save(key: "local_fav_removed.\(network.rawValue)", value: removed.map(String.init).joined(separator: ","))
+        Prefs.save(key: "local_fav_added.\(network.rawValue)", value: added.map(String.init).joined(separator: ","))
+        Prefs.save(key: "local_fav_removed.\(network.rawValue)", value: removed.map(String.init).joined(separator: ","))
     }
 
     private func clearLocalFavoriteOverrides(for network: Network) {
-        KeychainHelper.delete(key: "local_fav_added.\(network.rawValue)")
-        KeychainHelper.delete(key: "local_fav_removed.\(network.rawValue)")
+        Prefs.delete(key: "local_fav_added.\(network.rawValue)")
+        Prefs.delete(key: "local_fav_removed.\(network.rawValue)")
     }
 
     private func applyLocalFavoriteOverrides(to ids: Set<Int>, network: Network) -> Set<Int> {
@@ -419,7 +423,7 @@ final class AppState {
             subscriptions = profile.subscriptions ?? []
             if let resolvedMemberId = profile.resolvedMemberId, resolvedMemberId != memberId {
                 memberId = resolvedMemberId
-                KeychainHelper.save(key: "member_id", value: String(resolvedMemberId))
+                Prefs.save(key: "member_id", value: String(resolvedMemberId))
             }
             // Log real network_ids so the Network.networkId mapping can be verified in Console
             let summary = subscriptions
@@ -443,7 +447,7 @@ final class AppState {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
         else { return }
-        KeychainHelper.save(key: "last_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
+        Prefs.save(key: "last_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
         playingNetwork = selectedNetwork
         log.info("playChannel: \(channel.name) on \(self.selectedNetwork.rawValue) -> \(url)")
         audioPlayer.play(channel: channel, streamURL: url, network: selectedNetwork)
@@ -466,7 +470,7 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
-        guard let raw = KeychainHelper.read(key: "last_station_id.\(selectedNetwork.rawValue)"),
+        guard let raw = Prefs.read(key: "last_station_id.\(selectedNetwork.rawValue)"),
               let channelId = Int(raw)
         else { return }
         guard let channel = channels.first(where: { $0.id == channelId }) else {

@@ -1,8 +1,10 @@
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         VStack(spacing: 6) {
@@ -19,7 +21,7 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .frame(width: 130)
                 .onChange(of: appState.selectedQuality) { _, newValue in
-                    KeychainHelper.save(key: "quality", value: newValue.rawValue)
+                    Prefs.save(key: "quality", value: newValue.rawValue)
                     appState.restartStreamForQualityChange()
                 }
             }
@@ -33,6 +35,29 @@ struct SettingsView: View {
                 Toggle("", isOn: Bindable(appState).showTrackInMenuBar)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
+            }
+            .padding(.horizontal, 16)
+
+            HStack {
+                Text("Launch at login")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("", isOn: $launchAtLogin)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            // Revert the toggle if the system call failed
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
             }
             .padding(.horizontal, 16)
 
