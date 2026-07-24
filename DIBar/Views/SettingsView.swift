@@ -15,6 +15,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .controlSize(.small)
                 .labelsHidden()
                 .fixedSize()
                 .onChange(of: appState.selectedQuality) { _, newValue in
@@ -162,7 +163,7 @@ struct SettingsView: View {
         }
         .frame(minHeight: 22)
         .padding(.horizontal, 16)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }
 
