@@ -5,21 +5,11 @@ struct NetworkPicker: View {
 
     var body: some View {
         Menu {
-            // Speaker lives in the item's single image slot (leading, keeps
-            // names aligned); the selection checkmark is inline trailing text,
-            // since the native checkmark gutter forms its own ragged column.
             ForEach(Network.allCases) { network in
                 Button {
                     appState.selectNetwork(network)
                 } label: {
-                    if appState.playingNetwork == network, appState.audioPlayer.currentChannel != nil {
-                        Image(systemName: "speaker.wave.2.fill")
-                    }
-                    if network == appState.selectedNetwork {
-                        Text("\(network.displayName)  \(Image(systemName: "checkmark"))")
-                    } else {
-                        Text(network.displayName)
-                    }
+                    itemText(for: network)
                 }
             }
         } label: {
@@ -29,5 +19,22 @@ struct NetworkPicker: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Switch radio network")
+    }
+
+    /// "(speaker) (checkmark) Name" — glyphs inline so both can appear at
+    /// once (a menu item's image slot only fits a single image).
+    private func itemText(for network: Network) -> Text {
+        let playing = appState.playingNetwork == network && appState.audioPlayer.currentChannel != nil
+        let selected = network == appState.selectedNetwork
+        switch (playing, selected) {
+        case (true, true):
+            return Text("\(Image(systemName: "speaker.wave.2.fill")) \(Image(systemName: "checkmark")) \(network.displayName)")
+        case (true, false):
+            return Text("\(Image(systemName: "speaker.wave.2.fill")) \(network.displayName)")
+        case (false, true):
+            return Text("\(Image(systemName: "checkmark")) \(network.displayName)")
+        case (false, false):
+            return Text(network.displayName)
+        }
     }
 }
