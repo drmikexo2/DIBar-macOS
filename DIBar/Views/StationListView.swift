@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StationListView: View {
     @Environment(AppState.self) private var appState
+    @State private var allStationsExpanded = KeychainHelper.read(key: "all_stations_expanded") != "0"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,23 +46,38 @@ struct StationListView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
+                            let showSections = appState.searchText.isEmpty
+                                && (!appState.favoriteChannels.isEmpty || appState.favoritesLoadFailed)
+
                             // Favorites
-                            if appState.searchText.isEmpty && !appState.favoriteChannels.isEmpty {
-                                SectionHeader(title: "Favorites")
-                                ForEach(appState.favoriteChannels) { channel in
-                                    ChannelRow(channel: channel)
-                                        .id("fav-\(channel.id)")
+                            if showSections {
+                                SectionHeader(
+                                    title: "Favorites",
+                                    showsSyncWarning: !appState.favoritesSyncAvailable
+                                )
+                                if appState.favoritesLoadFailed && appState.favoriteChannels.isEmpty {
+                                    favoritesFailedRow
+                                } else {
+                                    ForEach(appState.favoriteChannels) { channel in
+                                        ChannelRow(channel: channel)
+                                            .id("fav-\(channel.id)")
+                                    }
                                 }
 
                                 Divider()
                                     .padding(.top, 8)
 
-                                SectionHeader(title: "All Stations")
+                                SectionHeader(
+                                    title: "All Stations (\(appState.filteredChannels.count))",
+                                    isExpanded: $allStationsExpanded
+                                )
                             }
 
-                            ForEach(appState.filteredChannels) { channel in
-                                ChannelRow(channel: channel)
-                                    .id("all-\(channel.id)")
+                            if !showSections || allStationsExpanded {
+                                ForEach(appState.filteredChannels) { channel in
+                                    ChannelRow(channel: channel)
+                                        .id("all-\(channel.id)")
+                                }
                             }
                         }
                     }
@@ -75,6 +91,25 @@ struct StationListView: View {
                 }
             }
         }
+        .onChange(of: allStationsExpanded) { _, expanded in
+            KeychainHelper.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
+        }
+    }
+
+    private var favoritesFailedRow: some View {
+        HStack(spacing: 6) {
+            Text("Couldn't load favorites")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Button("Retry") {
+                Task { await appState.loadFavorites() }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 }
 
@@ -102,10 +137,14 @@ struct ChannelRow: View {
                     .fontWeight(isPlaying ? .semibold : .regular)
                     .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
                 Spacer()
-                if isFavorite {
-                    Image(systemName: "star.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.yellow.opacity(0.65))
+                if isFavorite || isHovered {
+                    Button(action: { appState.toggleFavorite(channel) }) {
+                        Image(systemName: isFavorite ? "star.fill" : "star")
+                            .font(.caption2)
+                            .foregroundStyle(isFavorite ? AnyShapeStyle(.yellow.opacity(0.65)) : AnyShapeStyle(.secondary))
+                    }
+                    .buttonStyle(.plain)
+                    .help(isFavorite ? "Remove from favorites" : "Add to favorites")
                 }
                 if isPlaying && appState.audioPlayer.isPlaying {
                     Image(systemName: "speaker.wave.2.fill")
@@ -135,13 +174,40 @@ struct ChannelRow: View {
 
 struct SectionHeader: View {
     let title: String
+    var showsSyncWarning: Bool = false
+    var isExpanded: Binding<Bool>? = nil
 
     var body: some View {
-        Text(title.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+        HStack(spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if showsSyncWarning {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .help("Favorites saved locally — syncing with the server isn't available")
+            }
+
+            if let isExpanded {
+                Spacer()
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isExpanded.wrappedValue.toggle()
+                    }
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded.wrappedValue ? "Collapse" : "Expand")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }

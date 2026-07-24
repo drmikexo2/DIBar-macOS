@@ -75,8 +75,25 @@ enum DIClient {
     // MARK: - Fetch Favorites
 
     static func fetchFavorites(apiKey: String, network: Network) async throws -> Set<Int> {
+        let data = try await favoritesData(apiKey: apiKey, network: network)
+        return extractChannelIds(from: data)
+    }
+
+    /// Favorites in server order (by position). Used for the read-merge-write
+    /// cycle in setFavorites, where order must be preserved.
+    static func fetchFavoritesOrdered(apiKey: String, network: Network) async throws -> [Int] {
+        let data = try await favoritesData(apiKey: apiKey, network: network)
+        if let favorites = try? JSONDecoder().decode([FavoriteChannel].self, from: data) {
+            return favorites
+                .sorted { ($0.position ?? .max) < ($1.position ?? .max) }
+                .compactMap(\.resolvedChannelId)
+        }
+        return Array(extractChannelIds(from: data)).sorted()
+    }
+
+    private static func favoritesData(apiKey: String, network: Network) async throws -> Data {
         let urlStr = "\(network.apiBaseURL)/members/1/favorites/channels?api_key=\(urlEncode(apiKey))"
-        guard let url = URL(string: urlStr) else { return [] }
+        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
 
         log.info("favorites(\(network.rawValue)): GET")
 
@@ -90,10 +107,34 @@ enum DIClient {
 
         guard let http, (200...299).contains(http.statusCode) else {
             log.error("favorites(\(network.rawValue)): HTTP error \(http?.statusCode ?? 0)")
-            return []
+            throw DIClientError.httpError(http?.statusCode ?? 0)
         }
 
-        return extractChannelIds(from: data)
+        return data
+    }
+
+    /// Replace the member's favorites with the given ordered channel list.
+    /// The endpoint has bulk-replace semantics (verified against the live API),
+    /// so callers must GET-merge-POST rather than posting a single change.
+    static func setFavorites(channelIds: [Int], memberId: Int, apiKey: String, network: Network) async throws {
+        let urlStr = "\(network.apiBaseURL)/members/\(memberId)/favorites/channels?api_key=\(urlEncode(apiKey))"
+        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload = ["favorites": channelIds.enumerated().map { ["channel_id": $1, "position": $0] }]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let http = response as? HTTPURLResponse
+
+        log.info("setFavorites(\(network.rawValue)): POST \(channelIds.count) favorites, HTTP \(http?.statusCode ?? 0)")
+
+        guard let http, (200...299).contains(http.statusCode) else {
+            throw DIClientError.httpError(http?.statusCode ?? 0)
+        }
     }
 
     /// Walk any JSON structure and extract all "channel_id" integer values found
