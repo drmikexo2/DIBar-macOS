@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover(_:))
+        // If the label grows while the width is pinned (popover open), shrink
+        // it to fit rather than clipping
+        statusItem.button?.imageScaling = .scaleProportionallyDown
 
         popover = NSPopover()
         popover.behavior = .transient
@@ -56,6 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            // Pin the status item's width while the popover is anchored to it;
+            // label updates resizing the item would make the popover jump.
+            statusItem.length = button.frame.width
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             NSApp.activate(ignoringOtherApps: true)
@@ -63,15 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
-        // Apply any label change deferred while the popover was open
-        refreshLabel()
+        // Let the status item resize to its content again
+        statusItem.length = NSStatusItem.variableLength
     }
 
     private func refreshLabel() {
         guard let button = statusItem.button else { return }
-        // Never resize the status item while the popover is anchored to it —
-        // a width change makes the popover jump around under the user.
-        guard popover?.isShown != true else { return }
         let line1 = appState.menuBarLine1
         let line2 = appState.menuBarLine2
         let glyph = MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
