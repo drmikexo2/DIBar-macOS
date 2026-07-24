@@ -9,19 +9,39 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             settingsRow("Quality") {
-                Picker("", selection: Bindable(appState).selectedQuality) {
+                // Custom compact menu: NSPopUpButton ignores small control
+                // sizing here and overflows the row height
+                Menu {
                     ForEach(StreamQuality.allCases) { quality in
-                        Text(quality.displayName).tag(quality)
+                        Button {
+                            guard appState.selectedQuality != quality else { return }
+                            appState.selectedQuality = quality
+                            Prefs.save(key: "quality", value: quality.rawValue)
+                            appState.restartStreamForQualityChange()
+                        } label: {
+                            if quality == appState.selectedQuality {
+                                Text("\(Image(systemName: "checkmark")) \(quality.displayName)")
+                            } else {
+                                Text(quality.displayName)
+                            }
+                        }
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(appState.selectedQuality.displayName)
+                            .font(.system(size: 11))
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .labelsHidden()
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 .fixedSize()
-                .onChange(of: appState.selectedQuality) { _, newValue in
-                    Prefs.save(key: "quality", value: newValue.rawValue)
-                    appState.restartStreamForQualityChange()
-                }
             }
 
             Divider()
@@ -132,7 +152,6 @@ struct SettingsView: View {
             .padding(.vertical, 6)
             .padding(.bottom, 2)
         }
-        .padding(.vertical, 4)
     }
 
     /// Glyph for the preview card: honors the chip, shows the real state when
@@ -163,7 +182,7 @@ struct SettingsView: View {
         }
         .frame(minHeight: 22)
         .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 }
 
