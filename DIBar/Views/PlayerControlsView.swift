@@ -197,7 +197,8 @@ struct TrackMetaRow: View {
                 Button(action: { appState.voteCurrentTrack(up: true) }) {
                     HStack(spacing: 2) {
                         Image(systemName: myVote == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        Text("\(track.upVotes)")
+                        // Count includes the user's own vote for instant feedback
+                        Text("\(track.upVotes + (myVote == 1 ? 1 : 0))")
                     }
                     .foregroundStyle(.green.opacity(myVote == 1 ? 1.0 : 0.7))
                     .contentShape(Rectangle())
@@ -209,7 +210,7 @@ struct TrackMetaRow: View {
                 Button(action: { appState.voteCurrentTrack(up: false) }) {
                     HStack(spacing: 2) {
                         Image(systemName: myVote == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                        Text("\(track.downVotes)")
+                        Text("\(track.downVotes + (myVote == -1 ? 1 : 0))")
                     }
                     .foregroundStyle(.red.opacity(myVote == -1 ? 0.9 : 0.55))
                     .contentShape(Rectangle())
