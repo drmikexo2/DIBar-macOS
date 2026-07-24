@@ -71,7 +71,40 @@ final class HistoryRecorder {
     // MARK: - History window queries
 
     func recentListens(limit: Int = 500) -> [HistoryStore.ListenEntry] {
-        store?.recentListens(limit: limit) ?? []
+        // Fetch extra raw segments since merging shrinks the list
+        Self.mergingAdjacent(store?.recentListens(limit: limit * 2) ?? [])
+    }
+
+    /// Collapse back-to-back segments of the same song on the same station
+    /// (splits caused by pauses, crashes, or stream restarts) into one entry.
+    /// Distinct plays separated by more than `maxGap` stay separate.
+    static func mergingAdjacent(
+        _ entries: [HistoryStore.ListenEntry],
+        maxGap: TimeInterval = 300
+    ) -> [HistoryStore.ListenEntry] {
+        var merged: [HistoryStore.ListenEntry] = []
+        for entry in entries { // newest first: `entry` is older than `merged.last`
+            if let newer = merged.last,
+               newer.artist == entry.artist,
+               newer.title == entry.title,
+               newer.network == entry.network,
+               newer.channelName == entry.channelName,
+               newer.startedAt.timeIntervalSince(entry.startedAt.addingTimeInterval(entry.duration)) <= maxGap {
+                merged[merged.count - 1] = HistoryStore.ListenEntry(
+                    id: newer.id,
+                    startedAt: entry.startedAt,
+                    duration: newer.duration + entry.duration,
+                    network: newer.network,
+                    channelName: newer.channelName,
+                    artist: newer.artist,
+                    title: newer.title,
+                    vote: newer.vote ?? entry.vote
+                )
+            } else {
+                merged.append(entry)
+            }
+        }
+        return merged
     }
 
     func voteEntries(vote: Int, limit: Int = 500) -> [HistoryStore.VoteEntry] {
