@@ -45,10 +45,6 @@ enum Network: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var subscriptionURL: URL {
-        URL(string: "https://www.\(listenDomain)/account/subscriptions")!
-    }
-
     /// AudioAddict network_id as it appears in membership subscriptions.
     /// Best-known community values; loadMembership logs the real ones so a
     /// mismatch shows up in Console rather than as silent wrong gating.

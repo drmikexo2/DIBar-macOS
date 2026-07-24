@@ -108,9 +108,10 @@ final class AppState {
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    var subscriptionURL: URL {
-        selectedNetwork.subscriptionURL
-    }
+    /// Subscriptions are account-level and managed on DI's site — the sibling
+    /// domains have no subscription page of their own.
+    static let subscriptionURL = URL(string: "https://www.di.fm/member/subscription")!
+    var subscriptionURL: URL { Self.subscriptionURL }
 
     /// Subscription for the selected network, falling back to any active
     /// subscription — in practice one premium subscription streams every

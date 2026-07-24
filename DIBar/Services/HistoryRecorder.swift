@@ -85,8 +85,8 @@ final class HistoryRecorder {
         var merged: [HistoryStore.ListenEntry] = []
         for entry in entries { // newest first: `entry` is older than `merged.last`
             if let newer = merged.last,
-               newer.artist == entry.artist,
-               newer.title == entry.title,
+               mergeKey(newer.artist) == mergeKey(entry.artist),
+               mergeKey(newer.title) == mergeKey(entry.title),
                newer.network == entry.network,
                newer.channelName == entry.channelName,
                newer.startedAt.timeIntervalSince(entry.startedAt.addingTimeInterval(entry.duration)) <= maxGap {
@@ -105,6 +105,20 @@ final class HistoryRecorder {
             }
         }
         return merged
+    }
+
+    /// Canonical form for comparing song metadata across sources: ICY and the
+    /// API render the same title with different quote characters and spacing.
+    static func mergeKey(_ text: String) -> String {
+        // backtick, acute, left/right single curly quotes, reversed quote,
+        // modifier apostrophe, prime — all fold to a straight apostrophe
+        let quoteVariants = "`´\u{2018}\u{2019}\u{201B}\u{02BC}\u{2032}"
+        let folded = text.lowercased().map { char -> Character in
+            quoteVariants.contains(char) ? "'" : char
+        }
+        return String(folded)
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .joined(separator: " ")
     }
 
     func voteEntries(vote: Int, limit: Int = 500) -> [HistoryStore.VoteEntry] {

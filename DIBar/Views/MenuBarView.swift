@@ -9,11 +9,10 @@ struct MenuBarView: View {
             if appState.isLoggedIn {
                 VStack(spacing: 0) {
                     if appState.audioPlayer.playbackError != nil, appState.playbackFailureLooksLikeNoPremium {
-                        let network = appState.playingNetwork ?? appState.selectedNetwork
                         ErrorBanner(
                             message: "Playback failed — premium subscription may be required",
                             actionTitle: "Subscribe",
-                            action: { openURL(network.subscriptionURL) },
+                            action: { openURL(AppState.subscriptionURL) },
                             onDismiss: { appState.audioPlayer.playbackError = nil }
                         )
                         Divider()
