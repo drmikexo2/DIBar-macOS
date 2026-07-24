@@ -10,6 +10,9 @@ build/
 DerivedData/
 *.app/
 dist/
+*.zip
+*.zip.sha256
+DIBar 20*/
 
 # SwiftPM
 .build/
