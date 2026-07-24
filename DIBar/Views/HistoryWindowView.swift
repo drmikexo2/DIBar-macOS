@@ -84,6 +84,18 @@ struct HistoryWindowView: View {
 
     private func listenRow(_ entry: HistoryStore.ListenEntry) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // Liked/disliked songs stand out in the listened list
+            Group {
+                if let vote = entry.vote {
+                    Image(systemName: vote > 0 ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(vote > 0 ? AnyShapeStyle(.green.opacity(0.8)) : AnyShapeStyle(.red.opacity(0.6)))
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(width: 14, height: 12)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(songLine(artist: entry.artist, title: entry.title))
                     .font(.system(size: 12))

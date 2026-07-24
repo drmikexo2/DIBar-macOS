@@ -39,14 +39,14 @@ struct MenuBarView: View {
 
     private var footer: some View {
         HStack(spacing: 16) {
-            footerButton("Settings…") {
+            HoverTextButton(title: "Settings…") {
                 NotificationCenter.default.post(name: .dibarOpenSettings, object: nil)
             }
-            footerButton("History…") {
+            HoverTextButton(title: "History…") {
                 NotificationCenter.default.post(name: .dibarOpenHistory, object: nil)
             }
             Spacer()
-            footerButton("Quit") {
+            HoverTextButton(title: "Quit") {
                 NSApp.terminate(nil)
             }
         }
@@ -54,13 +54,30 @@ struct MenuBarView: View {
         .padding(.vertical, 8)
         .padding(.bottom, 2)
     }
+}
 
-    private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {
+/// Text button that signals clickability: pointing-hand cursor and a
+/// secondary→primary brightening on hover (tinted variants keep their color).
+struct HoverTextButton: View {
+    let title: String
+    var tint: Color? = nil
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
         Button(title, action: action)
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .font(.system(size: 11))
+            .foregroundStyle(currentStyle)
+            .onHover { isHovered = $0 }
             .cursor(.pointingHand)
+    }
+
+    private var currentStyle: AnyShapeStyle {
+        if let tint {
+            return AnyShapeStyle(tint.opacity(isHovered ? 1.0 : 0.8))
+        }
+        return isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)
     }
 }
 

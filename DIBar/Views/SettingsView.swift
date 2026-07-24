@@ -6,6 +6,7 @@ struct SettingsWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var showLogoutConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +57,8 @@ struct SettingsWindowView: View {
                     }
             }
 
+            Divider()
+
             settingsRow("Save song history (on this Mac)") {
                 Toggle("", isOn: Bindable(appState).saveListeningHistory)
                     .toggleStyle(.checkbox)
@@ -86,18 +89,16 @@ struct SettingsWindowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .cursor(.pointingHand)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
 
             Divider()
 
             HStack {
-                Button("Logout") {
-                    appState.logout()
+                HoverTextButton(title: "Logout", tint: .red) {
+                    showLogoutConfirmation = true
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.red.opacity(0.85))
-                .font(.system(size: 11))
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -105,6 +106,14 @@ struct SettingsWindowView: View {
         }
         .padding(.vertical, 6)
         .frame(width: 360)
+        .alert("Log out of DIBar?", isPresented: $showLogoutConfirmation) {
+            Button("Logout", role: .destructive) {
+                appState.logout()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll need to sign in with your account again to listen.")
+        }
     }
 
     private var qualityMenu: some View {
@@ -116,11 +125,10 @@ struct SettingsWindowView: View {
                     Prefs.save(key: "quality", value: quality.rawValue)
                     appState.restartStreamForQualityChange()
                 } label: {
-                    if quality == appState.selectedQuality {
-                        Text("\(Image(systemName: "checkmark")) \(quality.displayName)")
-                    } else {
-                        Text(quality.displayName)
-                    }
+                    // Every item reserves the checkmark slot so names align
+                    let check = Text("\(Image(systemName: "checkmark"))")
+                        .foregroundStyle(quality == appState.selectedQuality ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
+                    Text("\(check) \(quality.displayName)")
                 }
             }
         } label: {
@@ -139,6 +147,7 @@ struct SettingsWindowView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .cursor(.pointingHand)
     }
 
     /// Glyph for the preview card: honors the chip, shows the real state when

@@ -255,15 +255,17 @@ final class HistoryStore {
         let channelName: String
         let artist: String
         let title: String
+        let vote: Int?
     }
 
     func recentListens(limit: Int) -> [ListenEntry] {
         let sql = """
-        SELECT id, started_at, COALESCE(ended_at, last_seen_at) - started_at,
-               network, channel_name, artist, title
-        FROM listen_segments
-        WHERE (artist != '' OR title != '')
-        ORDER BY started_at DESC
+        SELECT s.id, s.started_at, COALESCE(s.ended_at, s.last_seen_at) - s.started_at,
+               s.network, s.channel_name, s.artist, s.title, v.vote
+        FROM listen_segments s
+        LEFT JOIN song_votes v ON v.track_id = s.track_id
+        WHERE (s.artist != '' OR s.title != '')
+        ORDER BY s.started_at DESC
         LIMIT ?;
         """
         var stmt: OpaquePointer?
@@ -279,7 +281,8 @@ final class HistoryStore {
                 network: String(cString: sqlite3_column_text(stmt, 3)),
                 channelName: String(cString: sqlite3_column_text(stmt, 4)),
                 artist: String(cString: sqlite3_column_text(stmt, 5)),
-                title: String(cString: sqlite3_column_text(stmt, 6))
+                title: String(cString: sqlite3_column_text(stmt, 6)),
+                vote: sqlite3_column_type(stmt, 7) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(stmt, 7))
             ))
         }
         return entries
