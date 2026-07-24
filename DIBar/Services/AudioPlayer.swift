@@ -17,6 +17,7 @@ final class AudioPlayer {
 
     var isPlaying: Bool = false
     var volume: Float = 0.75
+    var playbackError: String?
     var currentChannel: Channel?
     var currentNetwork: Network?
     var currentTrack: NowPlaying?
@@ -63,6 +64,7 @@ final class AudioPlayer {
 
         let sessionID = UUID()
         playbackSessionID = sessionID
+        playbackError = nil
         lastIcyStreamTitle = nil
         lastIcyLogicalKey = nil
         timingMode = .startupFrozen
@@ -83,7 +85,7 @@ final class AudioPlayer {
                 switch status {
                 case .failed:
                     self?.isPlaying = false
-                    _ = error // silence unused warning
+                    self?.playbackError = error ?? "Stream failed to load"
                 default:
                     break
                 }
@@ -145,6 +147,7 @@ final class AudioPlayer {
         player?.pause()
         player?.replaceCurrentItem(with: nil)
         isPlaying = false
+        playbackError = nil
         currentChannel = nil
         currentNetwork = nil
         currentTrack = nil

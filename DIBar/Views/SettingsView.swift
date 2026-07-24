@@ -20,10 +20,7 @@ struct SettingsView: View {
                 .frame(width: 130)
                 .onChange(of: appState.selectedQuality) { _, newValue in
                     KeychainHelper.save(key: "quality", value: newValue.rawValue)
-                    if let channel = appState.audioPlayer.currentChannel {
-                        Task { await appState.loadChannels() }
-                        appState.playChannel(channel)
-                    }
+                    appState.restartStreamForQualityChange()
                 }
             }
             .padding(.horizontal, 16)

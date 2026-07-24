@@ -106,11 +106,18 @@ final class AppState {
         guard !didBootstrap else { return }
         didBootstrap = true
 
-        // Migrate old single-station key to per-network
+        // Migrate legacy last-station keys (old name "favorite_station_id" was
+        // misleading — it stores the last played station, not a favorite)
         if let oldStation = KeychainHelper.read(key: "favorite_station_id") {
-            KeychainHelper.save(key: "favorite_station_id.di", value: oldStation)
+            KeychainHelper.save(key: "last_station_id.di", value: oldStation)
             KeychainHelper.delete(key: "favorite_station_id")
-            log.info("bootstrap: migrated favorite_station_id to favorite_station_id.di")
+            log.info("bootstrap: migrated favorite_station_id to last_station_id.di")
+        }
+        for network in Network.allCases {
+            if let oldStation = KeychainHelper.read(key: "favorite_station_id.\(network.rawValue)") {
+                KeychainHelper.save(key: "last_station_id.\(network.rawValue)", value: oldStation)
+                KeychainHelper.delete(key: "favorite_station_id.\(network.rawValue)")
+            }
         }
 
         // Restore last selected network
@@ -183,7 +190,7 @@ final class AppState {
         KeychainHelper.delete(key: "member_id")
         KeychainHelper.delete(key: "selected_network")
         for network in Network.allCases {
-            KeychainHelper.delete(key: "favorite_station_id.\(network.rawValue)")
+            KeychainHelper.delete(key: "last_station_id.\(network.rawValue)")
         }
         listenKey = nil
         apiKey = nil
@@ -285,10 +292,21 @@ final class AppState {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
         else { return }
-        KeychainHelper.save(key: "favorite_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
+        KeychainHelper.save(key: "last_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
         playingNetwork = selectedNetwork
         log.info("playChannel: \(channel.name) on \(self.selectedNetwork.rawValue) -> \(url)")
         audioPlayer.play(channel: channel, streamURL: url, network: selectedNetwork)
+    }
+
+    func restartStreamForQualityChange() {
+        guard audioPlayer.isPlaying,
+              let channel = audioPlayer.currentChannel,
+              let network = playingNetwork,
+              let key = listenKey,
+              let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: network)
+        else { return }
+        log.info("restartStreamForQualityChange: \(channel.name) at \(self.selectedQuality.rawValue)")
+        audioPlayer.play(channel: channel, streamURL: url, network: network)
     }
 
     func togglePlayPause() {
@@ -297,7 +315,7 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
-        guard let raw = KeychainHelper.read(key: "favorite_station_id.\(selectedNetwork.rawValue)"),
+        guard let raw = KeychainHelper.read(key: "last_station_id.\(selectedNetwork.rawValue)"),
               let channelId = Int(raw)
         else { return }
         guard let channel = channels.first(where: { $0.id == channelId }) else {

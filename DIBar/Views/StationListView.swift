@@ -37,27 +37,37 @@ struct StationListView: View {
                 .frame(height: 200)
                 .frame(maxWidth: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        // Followed stations
-                        if appState.searchText.isEmpty && !appState.favoriteChannels.isEmpty {
-                            SectionHeader(title: "Followed Stations")
-                            ForEach(appState.favoriteChannels) { channel in
-                                ChannelRow(channel: channel)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            // Favorites
+                            if appState.searchText.isEmpty && !appState.favoriteChannels.isEmpty {
+                                SectionHeader(title: "Favorites")
+                                ForEach(appState.favoriteChannels) { channel in
+                                    ChannelRow(channel: channel)
+                                        .id("fav-\(channel.id)")
+                                }
+
+                                Divider()
+                                    .padding(.top, 8)
+
+                                SectionHeader(title: "All Stations")
                             }
 
-                            Divider()
-                                .padding(.top, 8)
-
-                            SectionHeader(title: "All Stations")
+                            ForEach(appState.filteredChannels) { channel in
+                                ChannelRow(channel: channel)
+                                    .id("all-\(channel.id)")
+                            }
                         }
-
-                        ForEach(appState.filteredChannels) { channel in
-                            ChannelRow(channel: channel)
+                    }
+                    .frame(height: 280)
+                    .onAppear {
+                        if let playingId = appState.audioPlayer.currentChannel?.id,
+                           appState.playingNetwork == appState.selectedNetwork {
+                            proxy.scrollTo("all-\(playingId)", anchor: .center)
                         }
                     }
                 }
-                .frame(height: 280)
             }
         }
     }
@@ -68,20 +78,30 @@ struct StationListView: View {
 struct ChannelRow: View {
     @Environment(AppState.self) private var appState
     let channel: Channel
+    @State private var isHovered = false
 
     private var isPlaying: Bool {
         appState.audioPlayer.currentChannel?.id == channel.id
             && appState.playingNetwork == appState.selectedNetwork
     }
 
+    private var isFavorite: Bool {
+        appState.favoriteChannelIds.contains(channel.id)
+    }
+
     var body: some View {
         Button(action: { appState.playChannel(channel) }) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(channel.name)
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
-                    .foregroundStyle(isPlaying ? .primary : .primary)
+                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
                 Spacer()
+                if isFavorite {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow.opacity(0.65))
+                }
                 if isPlaying && appState.audioPlayer.isPlaying {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(.caption2)
@@ -97,7 +117,12 @@ struct ChannelRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(isPlaying ? Color.accentColor.opacity(0.1) : Color.clear)
+        .background(
+            isPlaying
+                ? Color.accentColor.opacity(0.1)
+                : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .onHover { isHovered = $0 }
     }
 }
 
