@@ -109,7 +109,14 @@ struct StationListView: View {
                         searchFocused = true
                         if let playingId = appState.audioPlayer.currentChannel?.id,
                            appState.playingNetwork == appState.selectedNetwork {
-                            proxy.scrollTo("all-\(playingId)", anchor: .center)
+                            // A playing favorite is shown in its Favorites row
+                            // at the top, not its duplicate down in All Stations
+                            if appState.searchText.isEmpty,
+                               appState.favoriteChannels.contains(where: { $0.id == playingId }) {
+                                proxy.scrollTo("fav-\(playingId)", anchor: .center)
+                            } else {
+                                proxy.scrollTo("all-\(playingId)", anchor: .center)
+                            }
                         }
                     }
                     .onChange(of: highlightedIndex) { _, index in
