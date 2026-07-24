@@ -218,6 +218,7 @@ enum MenuBarLabelRenderer {
     private static let height: CGFloat = 22
     private static let iconSide: CGFloat = 18
     private static let gap: CGFloat = 4
+    private static let symbolGap: CGFloat = 8
 
     @MainActor
     static func glyph(for player: AudioPlayer) -> PlaybackGlyph {
@@ -260,7 +261,7 @@ enum MenuBarLabelRenderer {
         }
 
         let textWidth = texts.map { $0.0.size().width + ($0.1.x - iconSide) }.max() ?? -gap
-        let symbolWidth = symbol.map { gap + $0.size.width } ?? 0
+        let symbolWidth = symbol.map { symbolGap + $0.size.width } ?? 0
         let width = ceil(iconSide + max(textWidth, 0) + symbolWidth + (texts.isEmpty ? 0 : 1))
 
         let scale: CGFloat = 2
@@ -294,7 +295,7 @@ enum MenuBarLabelRenderer {
                     height: symbolSize.height
                 ))
             }
-            let iconX = symbol.map { $0.size.width + gap } ?? 0
+            let iconX = symbol.map { $0.size.width + symbolGap } ?? 0
             if let icon = NSImage(named: "MenuBarIcon") {
                 icon.draw(in: NSRect(x: iconX, y: (height - iconSide) / 2, width: iconSide, height: iconSide))
             }
