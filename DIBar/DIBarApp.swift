@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastLabelKey: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Must precede AppState() — its stored properties read prefs at init
+        Prefs.migrateDefaultsV2()
         appState = AppState()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -80,6 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.panel.isVisible, let topLeft = self.panelTopLeft else { return }
+                // Skip the re-pin when the origin is already right — a second
+                // setFrame per layout pass feeds back into window layout.
+                let target = NSPoint(x: topLeft.x, y: topLeft.y - self.panel.frame.height)
+                guard self.panel.frame.origin != target else { return }
                 self.panel.setFrameTopLeftPoint(topLeft)
             }
         }
@@ -182,12 +188,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         statusItem.button?.highlight(true)
+        appState.trackNotifier.popoverIsVisible = true
     }
 
     private func closePanel() {
         panelTopLeft = nil
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
+        appState.trackNotifier.popoverIsVisible = false
     }
 
     private func refreshLabel() {
@@ -280,6 +288,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.post(name: NSNotification.Name("debugToggleArt"), object: nil)
         }
 
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.togglePanel"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.togglePanel(nil) }
+        }
+
         log.error("DEBUG: notification handlers registered")
         #endif
     }
@@ -289,13 +305,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// one/two text lines) into a single template image.
 enum MenuBarLabelRenderer {
     enum PlaybackGlyph: String {
-        case none, playing, paused
+        case none, playing, paused, buffering, muted
 
         var symbolName: String? {
             switch self {
             case .none: return nil
             case .playing: return "play.fill"
             case .paused: return "pause.fill"
+            case .buffering: return "arrow.triangle.2.circlepath"
+            case .muted: return "speaker.slash.fill"
             }
         }
     }
@@ -307,6 +325,11 @@ enum MenuBarLabelRenderer {
 
     @MainActor
     static func glyph(for player: AudioPlayer) -> PlaybackGlyph {
+        switch player.phase {
+        case .buffering, .reconnecting: return .buffering
+        default: break
+        }
+        if player.isPlaying, player.isMuted { return .muted }
         if player.isPlaying { return .playing }
         if player.currentChannel != nil { return .paused }
         return .none

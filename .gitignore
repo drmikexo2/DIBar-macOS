@@ -20,3 +20,6 @@ DIBar 20*/
 # Local tooling
 .codex/
 .claude/
+
+# Local credentials (copy Secrets.swift.example)
+DIBar/Services/Secrets.swift

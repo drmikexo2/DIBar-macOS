@@ -29,6 +29,10 @@ final class AppState {
     // Search
     var searchText: String = ""
 
+    // Recently played stations, most recent first, across all networks
+    var recentStations: [RecentStation] = []
+    private static let recentStationsLimit = 8
+
     // Playback
     let audioPlayer = AudioPlayer()
 
@@ -39,6 +43,81 @@ final class AppState {
             Prefs.save(key: "save_history", value: saveListeningHistory ? "1" : "0")
             historyRecorder.setEnabled(saveListeningHistory)
         }
+    }
+
+    // Scrobbling
+    let scrobbler: Scrobbler
+
+    // Track-change notifications
+    let trackNotifier: TrackNotifier
+    /// Shown under the Settings row when macOS denied notification permission.
+    var notifyPermissionHint: String?
+    var notifyTrackChanges: Bool = Prefs.read(key: "notify_track_changes") == "1" {
+        didSet {
+            Prefs.save(key: "notify_track_changes", value: notifyTrackChanges ? "1" : "0")
+            trackNotifier.setEnabled(notifyTrackChanges)
+            guard notifyTrackChanges else { return }
+            notifyPermissionHint = nil
+            trackNotifier.requestAuthorization { [weak self] granted in
+                guard let self, !granted else { return }
+                self.notifyTrackChanges = false
+                self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
+            }
+        }
+    }
+    /// Banner after a hotkey-driven channel/site switch — the feedback that
+    /// makes switching without the popover open usable. Default ON.
+    var notifySwitchChanges: Bool = Prefs.read(key: "notify_channel_switch") != "0" {
+        didSet {
+            Prefs.save(key: "notify_channel_switch", value: notifySwitchChanges ? "1" : "0")
+            guard notifySwitchChanges else { return }
+            notifyPermissionHint = nil
+            trackNotifier.requestAuthorization { [weak self] granted in
+                guard let self, !granted else { return }
+                self.notifySwitchChanges = false
+                self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
+            }
+        }
+    }
+
+    // Output device routing
+    let deviceManager = AudioDeviceManager()
+    /// The user's chosen device UID; kept even while the device is absent so
+    /// the route re-applies when it comes back.
+    var outputDeviceUID: String? = Prefs.read(key: "output_device_uid")
+
+    func setOutputDevice(uid: String?) {
+        outputDeviceUID = uid
+        if let uid {
+            Prefs.save(key: "output_device_uid", value: uid)
+        } else {
+            Prefs.delete(key: "output_device_uid")
+        }
+        applyOutputDevice()
+    }
+
+    private func applyOutputDevice() {
+        let available = outputDeviceUID.map { uid in
+            deviceManager.devices.contains { $0.uid == uid }
+        } ?? false
+        audioPlayer.setOutputDevice(uid: available ? outputDeviceUID : nil)
+    }
+
+    // Global hotkeys — default on for new installs; existing installs that
+    // never touched the setting are pinned off by Prefs.migrateDefaultsV2().
+    private let hotkeyManager = HotkeyManager()
+    var globalHotkeysEnabled: Bool = Prefs.read(key: "global_hotkeys") != "0" {
+        didSet {
+            Prefs.save(key: "global_hotkeys", value: globalHotkeysEnabled ? "1" : "0")
+            hotkeyManager.setEnabled(globalHotkeysEnabled)
+        }
+    }
+
+    // Sleep timer — session-only; never persisted across launches
+    var sleepTimerEndDate: Date?
+    private var sleepTimerTimer: Timer?
+    var sleepTimerQuitsApp: Bool = Prefs.read(key: "sleep_timer_quits") == "1" {
+        didSet { Prefs.save(key: "sleep_timer_quits", value: sleepTimerQuitsApp ? "1" : "0") }
     }
 
     // Settings
@@ -56,20 +135,21 @@ final class AppState {
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
     // Menu bar label components. "Site" in the UI, Network in code.
-    // Play/pause glyph defaults ON; the text components default OFF.
+    // All components default ON for new installs; existing installs that never
+    // touched them are pinned off by Prefs.migrateDefaultsV2().
     var menuBarShowPlayState: Bool = Prefs.read(key: "menubar_show_playstate") != "0" {
         didSet { Prefs.save(key: "menubar_show_playstate", value: menuBarShowPlayState ? "1" : "0") }
     }
-    var menuBarShowSite: Bool = Prefs.read(key: "menubar_show_site") == "1" {
+    var menuBarShowSite: Bool = Prefs.read(key: "menubar_show_site") != "0" {
         didSet { Prefs.save(key: "menubar_show_site", value: menuBarShowSite ? "1" : "0") }
     }
-    var menuBarShowStation: Bool = Prefs.read(key: "menubar_show_station") == "1" {
+    var menuBarShowStation: Bool = Prefs.read(key: "menubar_show_station") != "0" {
         didSet { Prefs.save(key: "menubar_show_station", value: menuBarShowStation ? "1" : "0") }
     }
-    var menuBarShowArtist: Bool = Prefs.read(key: "menubar_show_artist") == "1" {
+    var menuBarShowArtist: Bool = Prefs.read(key: "menubar_show_artist") != "0" {
         didSet { Prefs.save(key: "menubar_show_artist", value: menuBarShowArtist ? "1" : "0") }
     }
-    var menuBarShowSong: Bool = Prefs.read(key: "menubar_show_song") == "1" {
+    var menuBarShowSong: Bool = Prefs.read(key: "menubar_show_song") != "0" {
         didSet { Prefs.save(key: "menubar_show_song", value: menuBarShowSong ? "1" : "0") }
     }
 
@@ -236,8 +316,49 @@ final class AppState {
 
     init() {
         historyRecorder = HistoryRecorder(player: audioPlayer)
+        trackNotifier = TrackNotifier(player: audioPlayer)
+        scrobbler = Scrobbler(recorder: historyRecorder)
         historyRecorder.setEnabled(saveListeningHistory)
         historyRecorder.start()
+        historyRecorder.onTrackStarted = { [weak self] artist, title, duration in
+            self?.scrobbler.trackStarted(artist: artist, title: title, duration: duration)
+        }
+        historyRecorder.onSegmentClosed = { [weak self] artist, title, duration, startedAt, endedAt, reason in
+            self?.scrobbler.segmentClosed(
+                artist: artist, title: title, duration: duration,
+                startedAt: startedAt, endedAt: endedAt, reason: reason
+            )
+        }
+        scrobbler.start()
+        trackNotifier.setEnabled(notifyTrackChanges)
+        trackNotifier.start()
+        // Ask for notification permission up front — a deliberate first-launch
+        // moment instead of a prompt buried under a hotkey press.
+        if notifySwitchChanges || notifyTrackChanges {
+            trackNotifier.requestAuthorization { [weak self] granted in
+                guard let self, !granted else { return }
+                self.notifySwitchChanges = false
+                self.notifyTrackChanges = false
+                self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
+            }
+        }
+        audioPlayer.onNextTrack = { [weak self] in self?.cycleToNextFavorite() }
+        audioPlayer.onPreviousTrack = { [weak self] in self?.cycleToPreviousFavorite() }
+        hotkeyManager.onAction = { [weak self] action in
+            log.info("hotkey action: \(String(describing: action), privacy: .public)")
+            switch action {
+            case .playPause: self?.togglePlayPause()
+            case .nextFavorite: self?.cycleToNextFavorite()
+            case .previousFavorite: self?.cycleToPreviousFavorite()
+            case .nextSite: self?.cycleToNextSite()
+            case .previousSite: self?.cycleToPreviousSite()
+            }
+        }
+        hotkeyManager.setEnabled(globalHotkeysEnabled)
+        deviceManager.onDevicesChanged = { [weak self] in
+            self?.applyOutputDevice()
+        }
+        applyOutputDevice()
         Task { [weak self] in
             await self?.bootstrap()
         }
@@ -267,6 +388,12 @@ final class AppState {
             menuBarShowSong = true
         }
         Prefs.delete(key: "show_track_in_menu_bar")
+
+        // ListenBrainz support removed — drop stored credentials
+        Prefs.delete(key: "listenbrainz_token")
+        Prefs.delete(key: "listenbrainz_username")
+
+        loadRecentStations()
 
         // Restore last selected network
         if let raw = Prefs.read(key: "selected_network"), let net = Network(rawValue: raw) {
@@ -337,6 +464,8 @@ final class AppState {
         Prefs.delete(key: "api_key")
         Prefs.delete(key: "member_id")
         Prefs.delete(key: "selected_network")
+        Prefs.delete(key: "recent_stations")
+        recentStations = []
         for network in Network.allCases {
             Prefs.delete(key: "last_station_id.\(network.rawValue)")
             Prefs.delete(key: "local_fav_added.\(network.rawValue)")
@@ -528,13 +657,141 @@ final class AppState {
     // MARK: - Playback
 
     func playChannel(_ channel: Channel) {
+        playChannel(channel, on: selectedNetwork)
+    }
+
+    private func playChannel(_ channel: Channel, on network: Network) {
         guard let key = listenKey,
-              let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
+              let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: network)
         else { return }
-        Prefs.save(key: "last_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
-        playingNetwork = selectedNetwork
-        log.info("playChannel: \(channel.name) on \(self.selectedNetwork.rawValue) -> \(url)")
-        audioPlayer.play(channel: channel, streamURL: url, network: selectedNetwork)
+        Prefs.save(key: "last_station_id.\(network.rawValue)", value: String(channel.id))
+        playingNetwork = network
+        recordRecentStation(channel, network: network)
+        log.info("playChannel: \(channel.name) on \(network.rawValue) -> \(url)")
+        audioPlayer.play(channel: channel, streamURL: url, network: network)
+    }
+
+    /// Hotkey actions: jump to the next/previous favorite (alphabetical,
+    /// wrapping) on the network that's playing — or the browsed one when idle.
+    func cycleToNextFavorite() { cycleFavorite(offset: 1) }
+    func cycleToPreviousFavorite() { cycleFavorite(offset: -1) }
+
+    private func cycleFavorite(offset: Int) {
+        let network = playingNetwork ?? selectedNetwork
+        guard let data = networkDataCache[network] else { return }
+        let favorites = data.channels
+            .filter { data.favoriteChannelIds.contains($0.id) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        guard !favorites.isEmpty else { return }
+        let count = favorites.count
+        let base: Int
+        if let current = favorites.firstIndex(where: { $0.id == audioPlayer.currentChannel?.id }) {
+            base = current + offset
+        } else {
+            // Idle: forward starts at the first favorite, back at the last
+            base = offset > 0 ? 0 : count - 1
+        }
+        playChannel(favorites[((base % count) + count) % count], on: network)
+        announceSwitchIfEnabled()
+    }
+
+    /// Hotkey actions: step through the sites (declaration order, wrapping),
+    /// resuming each site's last played channel.
+    func cycleToNextSite() { cycleSite(offset: 1) }
+    func cycleToPreviousSite() { cycleSite(offset: -1) }
+
+    private func cycleSite(offset: Int) {
+        let all = Network.allCases
+        let current = playingNetwork ?? selectedNetwork
+        guard let index = all.firstIndex(of: current) else { return }
+        let count = all.count
+        switchSiteAndPlay(all[(((index + offset) % count) + count) % count])
+    }
+
+    /// Selects the site in the UI and starts its most sensible channel: the
+    /// one last played there, else the first favorite, else the first channel.
+    /// Inlines the selection instead of calling selectNetwork(_:) so its
+    /// fire-and-forget loadChannels Task can't race the awaited one here.
+    private func switchSiteAndPlay(_ network: Network) {
+        if network != selectedNetwork {
+            selectedNetwork = network
+            searchText = ""
+            Prefs.save(key: "selected_network", value: network.rawValue)
+        }
+        Task {
+            if networkDataCache[network]?.isLoaded != true {
+                await loadChannels(for: network)
+            }
+            guard let data = networkDataCache[network], !data.channels.isEmpty else { return }
+            let target: Channel
+            if let raw = Prefs.read(key: "last_station_id.\(network.rawValue)"),
+               let id = Int(raw),
+               let saved = data.channels.first(where: { $0.id == id }) {
+                target = saved
+            } else {
+                let sorted = data.channels
+                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                target = sorted.first { data.favoriteChannelIds.contains($0.id) } ?? sorted[0]
+            }
+            playChannel(target, on: network)
+            announceSwitchIfEnabled()
+        }
+    }
+
+    // No authorization round-trip here: permission is ensured at launch and on
+    // toggle-on, and a transient failure must never silently kill the feature.
+    // A keyboard switch also changes the song, so either toggle earns the
+    // banner (which carries both the channel and the track).
+    private func announceSwitchIfEnabled() {
+        guard notifySwitchChanges || notifyTrackChanges else { return }
+        trackNotifier.announceSwitch()
+    }
+
+    // MARK: - Recently Played Stations
+
+    /// Plays a recent entry, switching networks first when needed. Stale
+    /// entries (station gone from the channel list) self-heal by dropping out.
+    func playRecentStation(_ entry: RecentStation) {
+        Task {
+            if selectedNetwork != entry.network {
+                selectNetwork(entry.network)
+            }
+            if networkDataCache[entry.network]?.isLoaded != true {
+                await loadChannels(for: entry.network)
+            }
+            guard let channel = channels.first(where: { $0.id == entry.channelId }) else {
+                log.warning("playRecentStation: '\(entry.name, privacy: .public)' no longer on \(entry.network.rawValue)")
+                recentStations.removeAll { $0.id == entry.id }
+                persistRecentStations()
+                return
+            }
+            playChannel(channel)
+        }
+    }
+
+    private func recordRecentStation(_ channel: Channel, network: Network) {
+        let entry = RecentStation(network: network, channelId: channel.id, channelKey: channel.key, name: channel.name)
+        recentStations.removeAll { $0.network == network && $0.channelId == channel.id }
+        recentStations.insert(entry, at: 0)
+        if recentStations.count > Self.recentStationsLimit {
+            recentStations.removeLast(recentStations.count - Self.recentStationsLimit)
+        }
+        persistRecentStations()
+    }
+
+    private func loadRecentStations() {
+        guard let raw = Prefs.read(key: "recent_stations"),
+              let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([RecentStation].self, from: data)
+        else { return }
+        recentStations = decoded
+    }
+
+    private func persistRecentStations() {
+        guard let data = try? JSONEncoder().encode(recentStations),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        Prefs.save(key: "recent_stations", value: json)
     }
 
     // MARK: - Song Votes
@@ -571,7 +828,8 @@ final class AppState {
             historyRecorder.recordVote(
                 trackId: trackId, vote: newVote,
                 artist: track.artist, title: track.title,
-                network: network.rawValue, channelId: channel.id, channelName: channel.name
+                network: network.rawValue, channelId: channel.id, channelName: channel.name,
+                artPath: TrackArt.storagePath(from: track.artURL)
             )
             currentTrackVote = newVote
             if let ak = apiKey {
@@ -600,6 +858,37 @@ final class AppState {
 
     func togglePlayPause() {
         audioPlayer.togglePlayPause()
+    }
+
+    // MARK: - Sleep Timer
+
+    func startSleepTimer(minutes: Int) {
+        let clamped = min(max(minutes, 1), 720)
+        sleepTimerEndDate = Date().addingTimeInterval(TimeInterval(clamped * 60))
+        // A 1s date-compare timer instead of a one-shot: after system sleep the
+        // next tick still fires an overdue timer correctly.
+        if sleepTimerTimer == nil {
+            sleepTimerTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.sleepTimerTick() }
+            }
+        }
+        log.info("sleep timer: set for \(clamped)min")
+    }
+
+    func cancelSleepTimer() {
+        sleepTimerEndDate = nil
+        sleepTimerTimer?.invalidate()
+        sleepTimerTimer = nil
+    }
+
+    private func sleepTimerTick() {
+        guard let end = sleepTimerEndDate, Date() >= end else { return }
+        cancelSleepTimer()
+        log.info("sleep timer: fired")
+        audioPlayer.pause()
+        if sleepTimerQuitsApp {
+            NSApp.terminate(nil)
+        }
     }
 
     private func restoreSavedStationIfNeeded() {

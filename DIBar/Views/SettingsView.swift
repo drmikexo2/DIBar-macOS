@@ -20,7 +20,7 @@ struct SettingsWindowView: View {
                 HStack(spacing: 4) {
                     ToggleChip(title: "play/pause", systemImage: "playpause.fill", isOn: Bindable(appState).menuBarShowPlayState)
                     ToggleChip(title: "Site", isOn: Bindable(appState).menuBarShowSite)
-                    ToggleChip(title: "Station", isOn: Bindable(appState).menuBarShowStation)
+                    ToggleChip(title: "Channel", isOn: Bindable(appState).menuBarShowStation)
                     ToggleChip(title: "Artist", isOn: Bindable(appState).menuBarShowArtist)
                     ToggleChip(title: "Song", isOn: Bindable(appState).menuBarShowSong)
                 }
@@ -59,12 +59,83 @@ struct SettingsWindowView: View {
 
             Divider()
 
+            settingsRow("Global shortcuts") {
+                Toggle("", isOn: Bindable(appState).globalHotkeysEnabled)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .help("System-wide keyboard shortcuts that work in any app.")
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortcutRow(label: "play/pause") {
+                    KeyCap("⌃"); KeyCap("⌥"); KeyCap("⌘"); KeyCap("P")
+                    keySeparator("or")
+                    KeyCap(systemImage: "playpause.fill")
+                }
+                shortcutRow(label: "prev/next favorite channel") {
+                    KeyCap("⌃"); KeyCap("⌥"); KeyCap("⌘"); KeyCap("←")
+                    keySeparator("/")
+                    KeyCap("→")
+                    keySeparator("or")
+                    KeyCap(systemImage: "backward.fill")
+                    keySeparator("/")
+                    KeyCap(systemImage: "forward.fill")
+                }
+                shortcutRow(label: "next/prev site") {
+                    KeyCap("⌃"); KeyCap("⌥"); KeyCap("⌘"); KeyCap("↑")
+                    keySeparator("/")
+                    KeyCap("↓")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 6)
+
+            Divider()
+
+            settingsRow("Notification on song change") {
+                Toggle("", isOn: Bindable(appState).notifyTrackChanges)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .help("Shows a notification with the artist and song each time the track changes while the popover is closed.")
+
+            settingsRow("Notification on channel switch") {
+                Toggle("", isOn: Bindable(appState).notifySwitchChanges)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .help("Shows the site, channel, and song when you switch channels with a keyboard shortcut.")
+
+            if let hint = appState.notifyPermissionHint {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+            }
+
+            Divider()
+
+            settingsRow("Sleep timer quits DIBar") {
+                Toggle("", isOn: Bindable(appState).sleepTimerQuitsApp)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .help("When the sleep timer fires, quit DIBar entirely instead of just pausing playback.")
+
+            Divider()
+
             settingsRow("Save song history (on this Mac)") {
                 Toggle("", isOn: Bindable(appState).saveListeningHistory)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
             }
-            .help("Remembers the songs and stations you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
+            .help("Remembers the songs and channels you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
+
+            Divider()
+
+            scrobblingSection
 
             Divider()
 
@@ -105,7 +176,7 @@ struct SettingsWindowView: View {
             .padding(.vertical, 8)
         }
         .padding(.vertical, 6)
-        .frame(width: 360)
+        .frame(width: 320)
         .alert("Log out of DIBar?", isPresented: $showLogoutConfirmation) {
             Button("Logout", role: .destructive) {
                 appState.logout()
@@ -114,6 +185,61 @@ struct SettingsWindowView: View {
         } message: {
             Text("You'll need to sign in with your account again to listen.")
         }
+    }
+
+    // MARK: - Scrobbling
+
+    private var scrobblingSection: some View {
+        VStack(spacing: 0) {
+            // Last.fm — also feeds Airbuds (connect Last.fm inside Airbuds)
+            settingsRow("Last.fm") {
+                lastFMControl
+            }
+            .help("Sends the songs you listen to (at least half through, or 4 minutes) to your Last.fm profile. Apps like Airbuds can read them from there. Requires song history to stay on.")
+
+            if let error = appState.scrobbler.connectionError {
+                caption(error, color: .orange)
+            } else if appState.scrobbler.lastFMNeedsReconnect {
+                caption("Last.fm session expired — connect again", color: .orange)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var lastFMControl: some View {
+        let scrobbler = appState.scrobbler
+        if !LastFMClient.isConfigured {
+            Text("Requires an API key (see ScrobbleClients.swift)")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+        } else if let username = scrobbler.lastFMUsername, scrobbler.lastFMConnected {
+            HStack(spacing: 8) {
+                Text(username)
+                    .font(.system(size: 11))
+                HoverTextButton(title: "Disconnect", tint: .red) {
+                    scrobbler.disconnectLastFM()
+                }
+            }
+        } else if scrobbler.lastFMPendingToken != nil {
+            Button("Finish connecting") {
+                scrobbler.finishLastFMConnect()
+            }
+            .controlSize(.small)
+        } else {
+            Button("Connect…") {
+                scrobbler.connectLastFM()
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private func caption(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
     }
 
     private var qualityMenu: some View {
@@ -160,6 +286,23 @@ struct SettingsWindowView: View {
         return .playing
     }
 
+    /// One line of the shortcuts helper: keycaps left, action label right.
+    private func shortcutRow(label: String, @ViewBuilder keys: () -> some View) -> some View {
+        HStack(spacing: 3) {
+            keys()
+            Spacer(minLength: 8)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func keySeparator(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
+    }
+
     /// Caption on the left, control flush right, uniform height and padding.
     private func settingsRow(_ caption: String, @ViewBuilder control: () -> some View) -> some View {
         HStack {
@@ -172,6 +315,41 @@ struct SettingsWindowView: View {
         .frame(minHeight: 22)
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Key Cap
+
+/// A single keyboard key rendered as a small rounded keycap.
+private struct KeyCap: View {
+    var label: String?
+    var systemImage: String?
+
+    init(_ label: String) { self.label = label }
+    init(systemImage: String) { self.systemImage = systemImage }
+
+    var body: some View {
+        Group {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 7, weight: .semibold))
+            } else {
+                Text(label ?? "")
+                    .font(.system(size: 9, weight: .medium))
+            }
+        }
+        .foregroundStyle(.secondary)
+        .frame(minWidth: 12, minHeight: 11)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 3.5)
+                .fill(.quaternary.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 3.5)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        )
     }
 }
 

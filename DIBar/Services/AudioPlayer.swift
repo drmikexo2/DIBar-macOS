@@ -15,18 +15,43 @@ final class AudioPlayer {
         case frozenNoIcy
     }
 
+    /// What the transport is actually doing. `isPlaying` stays "the user wants
+    /// playback" so state diffing in HistoryRecorder keeps working unchanged.
+    enum PlaybackPhase: Equatable {
+        case idle
+        case buffering
+        case playing
+        case paused
+        case reconnecting(attempt: Int)
+        case failed
+    }
+
     var isPlaying: Bool = false
     var volume: Float = 0.75
+    /// Session-only, like volume: never persisted. `volume` keeps the user's
+    /// level while muted (the implicit stash); only the AVPlayer is zeroed.
+    var isMuted: Bool = false
+
+    // ◀◀/▶▶ media-key actions, set by AppState (favorite-channel cycling)
+    var onNextTrack: (() -> Void)?
+    var onPreviousTrack: (() -> Void)?
     var playbackError: String?
     var currentChannel: Channel?
     var currentNetwork: Network?
     var currentTrack: NowPlaying?
     var currentArtImage: NSImage?
     var currentTrackIdentityToken: String?
+    var phase: PlaybackPhase = .idle
+
+    var isRecovering: Bool {
+        if case .reconnecting = phase { return true }
+        return false
+    }
 
     private var player: AVPlayer?
     private var trackPollTask: Task<Void, Never>?
     private var statusObservation: NSKeyValueObservation?
+    private var timeControlObservation: NSKeyValueObservation?
     private var metadataOutput: AVPlayerItemMetadataOutput?
     private var metadataDelegate: StreamMetadataDelegate?
     private let normalPollIntervalSeconds = 10
@@ -40,17 +65,43 @@ final class AudioPlayer {
     private var audibleStartedAt: Date?
     private var frozenElapsedSeconds: Int = 0
 
+    // Reconnect state
+    private var lastPlayArgs: (channel: Channel, url: URL, network: Network)?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempt = 0
+    private var hasPlayedThisSession = false
+    private var isReconnectRestart = false
+    private var autoResumeOnNetworkReturn = false
+    private var lastItemError: String?
+    private var pausedAt: Date?
+    private var itemNotificationTokens: [NSObjectProtocol] = []
+    private var recovery: PlaybackRecovery?
+    private static let reconnectBackoff: [Double] = [1, 2, 4, 8, 15, 30, 30, 30]
+
     init() {
         setupRemoteCommands()
+        recovery = PlaybackRecovery(player: self)
     }
 
     // MARK: - Playback
 
     func play(channel: Channel, streamURL: URL, network: Network) {
+        // A user-initiated play resets recovery; a retry from the reconnect
+        // loop must not cancel the loop that issued it.
+        if !isReconnectRestart {
+            cancelReconnect()
+            reconnectAttempt = 0
+            autoResumeOnNetworkReturn = false
+        }
+        lastPlayArgs = (channel, streamURL, network)
+        hasPlayedThisSession = false
+        pausedAt = nil
+
         // Stop existing polling and observation
         trackPollTask?.cancel()
         statusObservation?.invalidate()
         statusObservation = nil
+        removeItemNotificationObservers()
         metadataOutput = nil
         metadataDelegate = nil
 
@@ -59,8 +110,17 @@ final class AudioPlayer {
 
         if player == nil {
             player = AVPlayer()
-            player?.volume = volume
+            player?.volume = isMuted ? 0 : volume
+            timeControlObservation = player?.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
+                let status = observed.timeControlStatus
+                Task { @MainActor [weak self] in
+                    self?.handleTimeControlChange(status)
+                }
+            }
         }
+        // Re-apply the chosen route on every (re)start so reconnects and
+        // quality changes keep playing to the same device.
+        player?.audioOutputDeviceUniqueID = outputDeviceUID
 
         let sessionID = UUID()
         playbackSessionID = sessionID
@@ -84,17 +144,29 @@ final class AudioPlayer {
             Task { @MainActor [weak self] in
                 switch status {
                 case .failed:
-                    self?.isPlaying = false
-                    self?.playbackError = error ?? "Stream failed to load"
+                    self?.handleItemFailure(error)
                 default:
                     break
                 }
             }
         }
+        itemNotificationTokens = [
+            NotificationCenter.default.addObserver(
+                forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.handleItemFailure(nil) }
+            },
+            NotificationCenter.default.addObserver(
+                forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.handleItemFailure(nil) }
+            },
+        ]
         installMetadataOutput(on: item, channelId: channel.id, channelName: channel.name, network: network, sessionID: sessionID)
 
         player?.replaceCurrentItem(with: item)
         player?.play()
+        phase = .buffering
 
         currentChannel = channel
         currentNetwork = network
@@ -122,14 +194,29 @@ final class AudioPlayer {
     }
 
     func pause() {
+        cancelReconnect()
+        autoResumeOnNetworkReturn = false
         player?.pause()
         isPlaying = false
+        pausedAt = Date()
+        phase = .paused
         updateNowPlaying()
     }
 
     func resume() {
+        guard currentChannel != nil else { return }
+        // A live buffer paused for long (or a dead item) is stale or badly
+        // behind — restart the stream instead of resuming into silence.
+        let pausedTooLong = pausedAt.map { Date().timeIntervalSince($0) > 60 } ?? false
+        if let args = lastPlayArgs,
+           pausedTooLong || player?.currentItem == nil || player?.currentItem?.status == .failed {
+            play(channel: args.channel, streamURL: args.url, network: args.network)
+            return
+        }
+        pausedAt = nil
         player?.play()
         isPlaying = true
+        phase = .buffering
         updateNowPlaying()
     }
 
@@ -138,10 +225,19 @@ final class AudioPlayer {
     }
 
     func stop() {
+        cancelReconnect()
+        reconnectAttempt = 0
+        autoResumeOnNetworkReturn = false
+        lastPlayArgs = nil
+        lastItemError = nil
+        pausedAt = nil
+        hasPlayedThisSession = false
+        phase = .idle
         trackPollTask?.cancel()
         trackPollTask = nil
         statusObservation?.invalidate()
         statusObservation = nil
+        removeItemNotificationObservers()
         metadataOutput = nil
         metadataDelegate = nil
         player?.pause()
@@ -167,7 +263,142 @@ final class AudioPlayer {
 
     func setVolume(_ newVolume: Float) {
         volume = newVolume
+        isMuted = false // touching the slider unmutes, like the system slider
         player?.volume = newVolume
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        player?.volume = isMuted ? 0 : volume
+    }
+
+    // MARK: - Output Routing
+
+    /// CoreAudio device UID to play through; nil follows the system default.
+    private(set) var outputDeviceUID: String?
+
+    func setOutputDevice(uid: String?) {
+        outputDeviceUID = uid
+        player?.audioOutputDeviceUniqueID = uid
+    }
+
+    /// The underlying AVPlayer, exposed only for AVRoutePickerView (AirPlay).
+    var routePickerPlayer: AVPlayer? { player }
+
+    // MARK: - Stream Recovery
+
+    private func handleTimeControlChange(_ status: AVPlayer.TimeControlStatus) {
+        switch status {
+        case .playing:
+            hasPlayedThisSession = true
+            reconnectAttempt = 0
+            lastItemError = nil
+            if isPlaying { phase = .playing }
+        case .waitingToPlayAtSpecifiedRate:
+            if isPlaying, reconnectTask == nil { phase = .buffering }
+        case .paused:
+            // A live stream dropping to .paused without user action is a stall.
+            if isPlaying, reconnectTask == nil, phase == .playing {
+                beginReconnect()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleItemFailure(_ errorDescription: String?) {
+        guard isPlaying else { return }
+        if let errorDescription { lastItemError = errorDescription }
+        // An in-flight reconnect loop sees the failed item via waitUntilPlaying.
+        guard reconnectTask == nil else { return }
+        beginReconnect()
+    }
+
+    private func beginReconnect() {
+        guard isPlaying, reconnectTask == nil, lastPlayArgs != nil else { return }
+        // Startup failures (never audible this session) get a short ladder so
+        // a bad key or missing subscription surfaces quickly; mid-stream drops
+        // get the full one.
+        let maxAttempts = hasPlayedThisSession ? Self.reconnectBackoff.count : 3
+        reconnectTask = Task { [weak self] in
+            await self?.runReconnectLoop(maxAttempts: maxAttempts)
+        }
+    }
+
+    private func cancelReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+    }
+
+    private func runReconnectLoop(maxAttempts: Int) async {
+        // A cancelled loop must not clear the slot — the canceller has already
+        // reset it, possibly to a replacement task.
+        defer { if !Task.isCancelled { reconnectTask = nil } }
+        while reconnectAttempt < maxAttempts {
+            let delay = Self.reconnectBackoff[min(reconnectAttempt, Self.reconnectBackoff.count - 1)]
+            reconnectAttempt += 1
+            phase = .reconnecting(attempt: reconnectAttempt)
+            log.error("RECONNECT: attempt \(self.reconnectAttempt, privacy: .public)/\(maxAttempts, privacy: .public) in \(delay, privacy: .public)s")
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, isPlaying, let args = lastPlayArgs else { return }
+
+            isReconnectRestart = true
+            play(channel: args.channel, streamURL: args.url, network: args.network)
+            isReconnectRestart = false
+            phase = .reconnecting(attempt: reconnectAttempt)
+
+            if await waitUntilPlaying(timeout: 15) {
+                log.error("RECONNECT: recovered")
+                return
+            }
+            guard !Task.isCancelled, isPlaying else { return }
+        }
+
+        log.error("RECONNECT: giving up after \(self.reconnectAttempt, privacy: .public) attempts")
+        isPlaying = false
+        phase = .failed
+        autoResumeOnNetworkReturn = true
+        playbackError = lastItemError ?? "Stream connection lost"
+        updateNowPlaying()
+    }
+
+    private func waitUntilPlaying(timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if Task.isCancelled || !isPlaying { return false }
+            if player?.timeControlStatus == .playing { return true }
+            if player?.currentItem?.status == .failed { return false }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return false
+    }
+
+    /// Called by PlaybackRecovery when the network path becomes satisfied.
+    func networkPathRestored() {
+        if isPlaying, isRecovering {
+            reconnectAttempt = 0
+            cancelReconnect()
+            beginReconnect()
+        } else if phase == .failed, autoResumeOnNetworkReturn, let args = lastPlayArgs {
+            autoResumeOnNetworkReturn = false
+            play(channel: args.channel, streamURL: args.url, network: args.network)
+        }
+    }
+
+    /// Called by PlaybackRecovery after system wake if playback was active.
+    /// A slept live-stream item is never trustworthy — always restart.
+    func restartAfterWake() {
+        guard isPlaying, let args = lastPlayArgs else { return }
+        cancelReconnect()
+        reconnectAttempt = 0
+        play(channel: args.channel, streamURL: args.url, network: args.network)
+    }
+
+    private func removeItemNotificationObservers() {
+        for token in itemNotificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        itemNotificationTokens = []
     }
 
     // MARK: - Now Playing Info Center
@@ -212,9 +443,18 @@ final class AudioPlayer {
             return .success
         }
 
-        // Disable skip commands (not applicable for radio)
-        center.nextTrackCommand.isEnabled = false
-        center.previousTrackCommand.isEnabled = false
+        // ◀◀/▶▶ media keys step through favorite channels (wired by AppState)
+        center.nextTrackCommand.isEnabled = true
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            self?.onNextTrack?()
+            return .success
+        }
+
+        center.previousTrackCommand.isEnabled = true
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            self?.onPreviousTrack?()
+            return .success
+        }
     }
 
     // MARK: - Track Polling
@@ -315,11 +555,17 @@ final class AudioPlayer {
 
         case .icyAnchored:
             let currentLogicalKey = currentLogicalTrackKey
-            if let apiLogicalKey, let currentLogicalKey, apiLogicalKey == currentLogicalKey {
+            // Fuzzy match: ICY titles carry remix suffixes and quote variants
+            // the API's canonical name lacks. On a match, the API's names win
+            // (canonical identity) while ICY keeps owning timing.
+            if TrackMatching.sameSong(
+                artistA: apiArtist, titleA: apiTitle,
+                artistB: nextTrack.artist, titleB: nextTrack.title
+            ) {
                 nextTrack = NowPlaying(
                     channelName: channelName,
-                    artist: nextTrack.artist,
-                    title: nextTrack.title,
+                    artist: apiArtist.isEmpty ? nextTrack.artist : apiArtist,
+                    title: apiTitle.isEmpty ? nextTrack.title : apiTitle,
                     trackId: item.trackId ?? nextTrack.trackId,
                     artURL: artURL ?? nextTrack.artURL,
                     duration: apiDuration,
@@ -329,7 +575,7 @@ final class AudioPlayer {
                     downVotes: downVotes
                 )
                 shouldUpdateTrack = true
-            } else if let apiLogicalKey, let currentLogicalKey, apiLogicalKey != currentLogicalKey {
+            } else if apiLogicalKey != nil, currentLogicalKey != nil {
                 // API moved to another track before ICY reported it. Freeze until ICY catches up.
                 frozenElapsedSeconds = currentElapsedSeconds()
                 timingMode = .frozenNoIcy
@@ -353,12 +599,16 @@ final class AudioPlayer {
             }
 
         case .frozenNoIcy:
-            let currentLogicalKey = currentLogicalTrackKey
-            if let apiLogicalKey, let currentLogicalKey, apiLogicalKey == currentLogicalKey {
+            // Same fuzzy test: the freeze holds while the API is on the next
+            // song (different title), and lifts if it flaps back to ours.
+            if TrackMatching.sameSong(
+                artistA: apiArtist, titleA: apiTitle,
+                artistB: nextTrack.artist, titleB: nextTrack.title
+            ) {
                 nextTrack = NowPlaying(
                     channelName: channelName,
-                    artist: nextTrack.artist,
-                    title: nextTrack.title,
+                    artist: apiArtist.isEmpty ? nextTrack.artist : apiArtist,
+                    title: apiTitle.isEmpty ? nextTrack.title : apiTitle,
                     trackId: item.trackId ?? nextTrack.trackId,
                     artURL: artURL ?? nextTrack.artURL,
                     duration: apiDuration,

@@ -20,6 +20,16 @@ enum StreamQuality: String, CaseIterable, Identifiable, Codable {
 
 // MARK: - Channel
 
+/// One entry in the cross-network recently-played MRU list.
+struct RecentStation: Codable, Identifiable, Equatable {
+    let network: Network
+    let channelId: Int
+    let channelKey: String
+    let name: String
+
+    var id: String { "\(network.rawValue)-\(channelId)" }
+}
+
 struct Channel: Codable, Identifiable, Hashable {
     let id: Int
     let key: String
@@ -223,6 +233,39 @@ struct NowPlaying: Equatable {
         let m = seconds / 60
         let s = seconds % 60
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+/// Album art URLs are content-addressed paths on a single CDN host, so
+/// history stores just the path — if the CDN ever moves, changing this
+/// constant heals every stored row. URLs on an unexpected host are stored
+/// in full and passed through unchanged.
+enum TrackArt {
+    static let cdnHost = "https://cdn-images.audioaddict.com"
+
+    static func storagePath(from url: URL?) -> String? {
+        guard let absolute = url?.absoluteString else { return nil }
+        if absolute.hasPrefix(cdnHost + "/") {
+            return String(absolute.dropFirst(cdnHost.count))
+        }
+        return absolute
+    }
+
+    static func url(fromStored stored: String?) -> URL? {
+        guard let stored, !stored.isEmpty else { return nil }
+        if stored.hasPrefix("/"), !stored.hasPrefix("//") {
+            return URL(string: cdnHost + stored)
+        }
+        return URL(string: stored)
+    }
+
+    /// The CDN resizes server-side via a `size` query — ask for pixel
+    /// dimensions (2x the point size) instead of downloading full art.
+    static func thumbnailURL(_ url: URL?, pixelSize: Int) -> URL? {
+        guard let url else { return nil }
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "size", value: "\(pixelSize)x\(pixelSize)")]
+        return components?.url ?? url
     }
 }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct StationListView: View {
     @Environment(AppState.self) private var appState
     @State private var allStationsExpanded = Prefs.read(key: "all_stations_expanded") != "0"
+    @State private var recentExpanded = Prefs.read(key: "recent_stations_expanded") != "0"
     @State private var highlightedIndex: Int?
     @FocusState private var searchFocused: Bool
 
@@ -18,7 +19,7 @@ struct StationListView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .font(.caption)
-                TextField("Search stations...", text: Bindable(appState).searchText)
+                TextField("Search channels...", text: Bindable(appState).searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .focused($searchFocused)
@@ -59,7 +60,7 @@ struct StationListView: View {
                 VStack {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Loading stations...")
+                    Text("Loading channels...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -68,39 +69,67 @@ struct StationListView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            let showSections = appState.searchText.isEmpty
+                        // pinnedViews makes the section headers sticky: each
+                        // pins at the top until the next header pushes it off
+                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            let searching = !appState.searchText.isEmpty
+                            let showFavorites = !searching
                                 && (!appState.favoriteChannels.isEmpty || appState.favoritesLoadFailed)
+                            let showRecents = !searching && !appState.recentStations.isEmpty
+                            let showSections = showFavorites || showRecents
 
                             // Favorites
-                            if showSections {
-                                SectionHeader(
-                                    title: "Favorites",
-                                    showsSyncWarning: !appState.favoritesSyncAvailable
-                                )
-                                if appState.favoritesLoadFailed && appState.favoriteChannels.isEmpty {
-                                    favoritesFailedRow
-                                } else {
-                                    ForEach(appState.favoriteChannels) { channel in
-                                        ChannelRow(channel: channel)
-                                            .id("fav-\(channel.id)")
+                            if showFavorites {
+                                Section {
+                                    if appState.favoritesLoadFailed && appState.favoriteChannels.isEmpty {
+                                        favoritesFailedRow
+                                    } else {
+                                        ForEach(appState.favoriteChannels) { channel in
+                                            ChannelRow(channel: channel)
+                                                .id("fav-\(channel.id)")
+                                        }
                                     }
+                                    Divider()
+                                        .padding(.top, 8)
+                                } header: {
+                                    SectionHeader(
+                                        title: "Favorite Channels",
+                                        showsSyncWarning: !appState.favoritesSyncAvailable
+                                    )
                                 }
-
-                                Divider()
-                                    .padding(.top, 8)
-
-                                SectionHeader(
-                                    title: "All Stations (\(appState.filteredChannels.count))",
-                                    isExpanded: $allStationsExpanded
-                                )
                             }
 
-                            if !showSections || allStationsExpanded {
-                                ForEach(Array(appState.filteredChannels.enumerated()), id: \.element.id) { index, channel in
-                                    ChannelRow(channel: channel, isHighlighted: index == highlightedIndex)
-                                        .id("all-\(channel.id)")
+                            // Recently played (across networks)
+                            if showRecents {
+                                Section {
+                                    if recentExpanded {
+                                        ForEach(appState.recentStations) { entry in
+                                            RecentRow(entry: entry)
+                                        }
+                                    }
+                                    Divider()
+                                        .padding(.top, 8)
+                                } header: {
+                                    SectionHeader(
+                                        title: "Recently Played Channels",
+                                        isExpanded: $recentExpanded
+                                    )
                                 }
+                            }
+
+                            if showSections {
+                                Section {
+                                    if allStationsExpanded {
+                                        allChannelRows
+                                    }
+                                } header: {
+                                    SectionHeader(
+                                        title: "All Channels (\(appState.filteredChannels.count))",
+                                        isExpanded: $allStationsExpanded
+                                    )
+                                }
+                            } else {
+                                allChannelRows
                             }
                         }
                     }
@@ -130,6 +159,9 @@ struct StationListView: View {
         .onChange(of: allStationsExpanded) { _, expanded in
             Prefs.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
         }
+        .onChange(of: recentExpanded) { _, expanded in
+            Prefs.save(key: "recent_stations_expanded", value: expanded ? "1" : "0")
+        }
         .onChange(of: appState.searchText) { _, _ in
             highlightedIndex = nil
         }
@@ -145,6 +177,13 @@ struct StationListView: View {
         if !allStationsExpanded { allStationsExpanded = true }
         let current = highlightedIndex ?? -1
         highlightedIndex = min(max(current + delta, 0), count - 1)
+    }
+
+    private var allChannelRows: some View {
+        ForEach(Array(appState.filteredChannels.enumerated()), id: \.element.id) { index, channel in
+            ChannelRow(channel: channel, isHighlighted: index == highlightedIndex)
+                .id("all-\(channel.id)")
+        }
     }
 
     private var favoritesFailedRow: some View {
@@ -222,7 +261,7 @@ struct ChannelRow: View {
                 .frame(width: 16, height: 14)
             }
             .padding(.leading, 16)
-            .padding(.trailing, 13)
+            .padding(.trailing, 8)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
@@ -231,6 +270,64 @@ struct ChannelRow: View {
             isPlaying
                 ? Color.accentColor.opacity(0.1)
                 : (isHighlighted || isHovered ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Recent Row
+
+/// Row in the Recently Played section — like ChannelRow but cross-network:
+/// shows the network suffix when it isn't the selected one, no star slot.
+struct RecentRow: View {
+    @Environment(AppState.self) private var appState
+    let entry: RecentStation
+    @State private var isHovered = false
+
+    private var isPlaying: Bool {
+        appState.audioPlayer.currentChannel?.id == entry.channelId
+            && appState.playingNetwork == entry.network
+    }
+
+    var body: some View {
+        Button(action: { appState.playRecentStation(entry) }) {
+            HStack(spacing: 4) {
+                Text(entry.name)
+                    .font(.system(size: 12))
+                    .fontWeight(isPlaying ? .semibold : .regular)
+                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+                if entry.network != appState.selectedNetwork {
+                    Text("· \(entry.network.shortLabel)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+
+                Group {
+                    if isPlaying && appState.audioPlayer.isPlaying {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    } else if isPlaying {
+                        Image(systemName: "speaker.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 16, height: 14)
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            isPlaying
+                ? Color.accentColor.opacity(0.1)
+                : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
     }
@@ -272,8 +369,13 @@ struct SectionHeader: View {
                 .help(isExpanded.wrappedValue ? "Collapse" : "Expand")
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .padding(.trailing, 11)
         .padding(.top, 10)
         .padding(.bottom, 4)
+        // Full width regardless of chevron presence, with an opaque-ish
+        // backing so rows don't bleed through while pinned
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial)
     }
 }

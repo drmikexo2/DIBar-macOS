@@ -41,9 +41,14 @@ struct PlayerControlsView: View {
                     }
                 }
 
-                Image(systemName: "speaker.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Button(action: { player.toggleMute() }) {
+                    Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.fill")
+                        .font(.caption2)
+                        .foregroundStyle(player.isMuted ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+                }
+                .buttonStyle(.plain)
+                .cursor(.pointingHand)
+                .help(player.isMuted ? "Unmute" : "Mute")
 
                 Slider(
                     value: Binding(
@@ -52,10 +57,16 @@ struct PlayerControlsView: View {
                     ),
                     in: 0...1
                 )
+                // Dimmed while muted, but still live — dragging unmutes
+                .opacity(player.isMuted ? 0.4 : 1)
 
                 Image(systemName: "speaker.wave.3.fill")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                OutputDevicePicker()
+
+                SleepTimerView()
             }
         }
         .padding(.horizontal, 16)
@@ -68,7 +79,7 @@ struct PlayerControlsView: View {
             let hasArt = player.currentArtImage != nil
             log.error("DEBUG toggleArt: appState.artworkExpanded=\(appState.artworkExpanded, privacy: .public) hasArt=\(hasArt, privacy: .public)")
             if hasArt {
-                withAnimation(.easeInOut(duration: 0.2)) { appState.artworkExpanded.toggle() }
+                appState.artworkExpanded.toggle()
                 log.error("DEBUG toggleArt: appState.artworkExpanded now=\(appState.artworkExpanded, privacy: .public)")
             }
         }
@@ -129,16 +140,24 @@ struct PlayerControlsView: View {
         .cursor(.pointingHand)
     }
 
+    @ViewBuilder
     private func trackInfoView(track: NowPlaying, lineLimit: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let hasSongMetadata = !(track.artist.isEmpty && track.title.isEmpty)
+        let info = VStack(alignment: .leading, spacing: 2) {
             channelLine(track: track)
 
             Text(track.displayText)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(lineLimit)
+                .help(hasSongMetadata ? track.displayText : "")
 
             TrackMetaRow(track: track)
+        }
+        if hasSongMetadata {
+            info.songActionsMenu(artist: track.artist, title: track.title)
+        } else {
+            info
         }
     }
 
@@ -154,7 +173,7 @@ struct PlayerControlsView: View {
                 .lineLimit(1)
                 .onTapGesture { appState.selectNetwork(network) }
                 .cursor(.pointingHand)
-                .help("Show \(network.displayName) stations")
+                .help("Show \(network.displayName) channels")
         } else {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
@@ -163,9 +182,11 @@ struct PlayerControlsView: View {
     }
 
     private func toggleArtworkExpansion() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            appState.artworkExpanded.toggle()
-        }
+        // Never animate this: it changes the panel's preferred size, and
+        // SwiftUI animating the NSPanel frame re-lays-out the whole AppKit
+        // hierarchy per frame — enough constraint churn to overflow the main
+        // thread's stack in the layout engine (crash 2026-07-24).
+        appState.artworkExpanded.toggle()
     }
 }
 
@@ -232,8 +253,18 @@ struct TrackMetaRow: View {
                 .foregroundStyle(.red.opacity(0.6))
             }
 
-            // Elapsed / Duration
-            if let elapsed = elapsedSeconds {
+            if hasSongMetadata {
+                SongActionsButton(artist: track.artist, title: track.title)
+            }
+
+            // Transport state while the stream recovers, else elapsed/duration
+            if isBufferingOrReconnecting {
+                Spacer(minLength: 0)
+                ProgressView()
+                    .controlSize(.mini)
+                Text(appState.audioPlayer.isRecovering ? "Reconnecting…" : "Buffering…")
+                    .foregroundStyle(.secondary)
+            } else if let elapsed = elapsedSeconds {
                 Spacer(minLength: 0)
                 if track.duration > 0 {
                     let clamped = min(max(elapsed, 0), track.duration)
@@ -252,6 +283,17 @@ struct TrackMetaRow: View {
         .onAppear { appState.refreshCurrentTrackVote() }
         .onChange(of: track.trackId) { _, _ in
             appState.refreshCurrentTrackVote()
+        }
+    }
+
+    private var hasSongMetadata: Bool {
+        !(track.artist.isEmpty && track.title.isEmpty) && track.title != "Loading..."
+    }
+
+    private var isBufferingOrReconnecting: Bool {
+        switch appState.audioPlayer.phase {
+        case .buffering, .reconnecting: return true
+        default: return false
         }
     }
 
