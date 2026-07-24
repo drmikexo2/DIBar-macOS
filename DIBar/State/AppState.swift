@@ -38,11 +38,12 @@ final class AppState {
         }
         return .premiumHigh
     }()
-    var membershipSubscription: MembershipSubscription?
+    var subscriptions: [MembershipSubscription] = []
 
     // UI
     var isLoading: Bool = false
     var errorMessage: String?
+    var subscriptionRequiredNetwork: Network?
 
     // MARK: - Computed
 
@@ -70,6 +71,33 @@ final class AppState {
         selectedNetwork.subscriptionURL
     }
 
+    /// Subscription for the currently selected network, if any.
+    var membershipSubscription: MembershipSubscription? {
+        subscription(for: selectedNetwork)
+    }
+
+    /// True once we have real subscription data to gate against.
+    var knowsSubscriptions: Bool { !subscriptions.isEmpty }
+
+    func subscription(for network: Network) -> MembershipSubscription? {
+        subscriptions.first { sub in
+            // Older responses may omit network_id; treat those as DI since we authenticate against DI.
+            let subNetwork = sub.networkId.flatMap(Network.from(networkId:)) ?? .di
+            guard subNetwork == network else { return false }
+            let status = sub.status?.lowercased() ?? ""
+            return status == "active" || status == "trial" || sub.trial == true
+        }
+    }
+
+    func hasActiveSubscription(for network: Network) -> Bool {
+        subscription(for: network) != nil
+    }
+
+    /// Only block playback when we positively know there is no subscription.
+    func canPlay(on network: Network) -> Bool {
+        !knowsSubscriptions || hasActiveSubscription(for: network)
+    }
+
     var membershipHeaderLine: String {
         guard let status = membershipSubscription?.status?.capitalized, !status.isEmpty else {
             return "Membership"
@@ -78,7 +106,12 @@ final class AppState {
     }
 
     var membershipDetailLine: String {
-        guard let subscription = membershipSubscription else { return "Tap to manage subscription" }
+        guard let subscription = membershipSubscription else {
+            if knowsSubscriptions {
+                return "No \(selectedNetwork.displayName) subscription — tap to subscribe"
+            }
+            return "Tap to manage subscription"
+        }
 
         var parts: [String] = []
         if let startedAt = subscription.startedDate {
@@ -139,11 +172,11 @@ final class AppState {
             log.info("bootstrap: apiKey=\(self.apiKey != nil ? "present" : "nil")")
             isLoggedIn = true
             if apiKey != nil {
-                async let channelsLoad: Void = loadChannels(for: selectedNetwork)
+                async let channelsLoad: Void = loadChannels(for: selectedNetwork, restoreStation: true)
                 async let membershipLoad: Void = loadMembership()
                 _ = await (channelsLoad, membershipLoad)
             } else {
-                await loadChannels(for: selectedNetwork)
+                await loadChannels(for: selectedNetwork, restoreStation: true)
             }
         } else {
             log.info("bootstrap: no stored listen_key")
@@ -172,7 +205,7 @@ final class AppState {
             }
             listenKey = response.listenKey
             apiKey = response.apiKey
-            membershipSubscription = response.subscriptions?.first
+            subscriptions = response.subscriptions ?? []
             isLoggedIn = true
             await loadChannels(for: selectedNetwork)
         } catch {
@@ -195,7 +228,8 @@ final class AppState {
         listenKey = nil
         apiKey = nil
         memberId = nil
-        membershipSubscription = nil
+        subscriptions = []
+        subscriptionRequiredNetwork = nil
         isLoggedIn = false
         networkDataCache = [:]
         playingNetwork = nil
@@ -223,7 +257,7 @@ final class AppState {
 
     // MARK: - Data Loading
 
-    func loadChannels(for network: Network? = nil) async {
+    func loadChannels(for network: Network? = nil, restoreStation: Bool = false) async {
         let target = network ?? selectedNetwork
         guard let key = listenKey else { return }
         isLoading = true
@@ -242,7 +276,9 @@ final class AppState {
 
             log.info("loadChannels(\(target.rawValue)): \(fetchedChannels.count) channels loaded")
 
-            if target == selectedNetwork {
+            // Only auto-resume the saved station at app launch — never when the
+            // user is merely browsing to another network.
+            if restoreStation && target == selectedNetwork {
                 restoreSavedStationIfNeeded()
             }
         } catch {
@@ -269,18 +305,22 @@ final class AppState {
 
     func loadMembership() async {
         guard let ak = apiKey else {
-            membershipSubscription = nil
+            subscriptions = []
             return
         }
 
         do {
             let profile = try await DIClient.fetchMembership(apiKey: ak)
-            membershipSubscription = profile.subscriptions?.first
+            subscriptions = profile.subscriptions ?? []
             if let resolvedMemberId = profile.resolvedMemberId, resolvedMemberId != memberId {
                 memberId = resolvedMemberId
                 KeychainHelper.save(key: "member_id", value: String(resolvedMemberId))
             }
-            log.info("loadMembership: subscription present=\(self.membershipSubscription != nil)")
+            // Log real network_ids so the Network.networkId mapping can be verified in Console
+            let summary = subscriptions
+                .map { "network_id=\($0.networkId?.description ?? "nil") status=\($0.status ?? "?")" }
+                .joined(separator: "; ")
+            log.info("loadMembership: \(self.subscriptions.count) subscriptions [\(summary, privacy: .public)]")
         } catch {
             log.error("loadMembership error: \(error.localizedDescription)")
         }
@@ -289,6 +329,12 @@ final class AppState {
     // MARK: - Playback
 
     func playChannel(_ channel: Channel) {
+        guard canPlay(on: selectedNetwork) else {
+            subscriptionRequiredNetwork = selectedNetwork
+            log.info("playChannel: blocked — no subscription for \(self.selectedNetwork.rawValue)")
+            return
+        }
+        subscriptionRequiredNetwork = nil
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
         else { return }

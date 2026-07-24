@@ -5,8 +5,13 @@ struct StationListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search
+            // Network switcher + search
             HStack {
+                NetworkPicker()
+
+                Divider()
+                    .frame(height: 12)
+
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .font(.caption)

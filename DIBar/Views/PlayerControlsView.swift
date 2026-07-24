@@ -120,9 +120,7 @@ struct PlayerControlsView: View {
 
     private func trackInfoView(track: NowPlaying, lineLimit: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(track.channelName)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
+            channelLine(track: track)
 
             Text(track.displayText)
                 .font(.system(size: 11))
@@ -130,6 +128,24 @@ struct PlayerControlsView: View {
                 .lineLimit(lineLimit)
 
             TrackMetaRow(track: track)
+        }
+    }
+
+    /// Channel name, prefixed with the network when the user is browsing a
+    /// different network than the one playing; tap jumps back to it.
+    @ViewBuilder
+    private func channelLine(track: NowPlaying) -> some View {
+        if let network = player.currentNetwork, network != appState.selectedNetwork {
+            Text("\(network.displayName) · \(track.channelName)")
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .onTapGesture { appState.selectNetwork(network) }
+                .cursor(.pointingHand)
+                .help("Show \(network.displayName) stations")
+        } else {
+            Text(track.channelName)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
         }
     }
 
