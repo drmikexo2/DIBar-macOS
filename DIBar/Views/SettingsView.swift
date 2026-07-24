@@ -81,7 +81,7 @@ struct SettingsWindowView: View {
                     keySeparator("/")
                     KeyCap(systemImage: "forward.fill")
                 }
-                shortcutRow(label: "next/prev site") {
+                shortcutRow(label: "prev/next site") {
                     KeyCap("⌃"); KeyCap("⌥"); KeyCap("⌘"); KeyCap("↑")
                     keySeparator("/")
                     KeyCap("↓")

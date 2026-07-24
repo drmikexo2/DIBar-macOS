@@ -73,8 +73,8 @@ final class HotkeyManager {
         registerKey(.playPause, keyCode: UInt32(kVK_ANSI_P), modifiers: modifiers)
         registerKey(.nextFavorite, keyCode: UInt32(kVK_RightArrow), modifiers: modifiers)
         registerKey(.previousFavorite, keyCode: UInt32(kVK_LeftArrow), modifiers: modifiers)
-        registerKey(.nextSite, keyCode: UInt32(kVK_UpArrow), modifiers: modifiers)
-        registerKey(.previousSite, keyCode: UInt32(kVK_DownArrow), modifiers: modifiers)
+        registerKey(.previousSite, keyCode: UInt32(kVK_UpArrow), modifiers: modifiers)
+        registerKey(.nextSite, keyCode: UInt32(kVK_DownArrow), modifiers: modifiers)
     }
 
     private func registerKey(_ action: Action, keyCode: UInt32, modifiers: UInt32) {
