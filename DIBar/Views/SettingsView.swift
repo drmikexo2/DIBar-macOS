@@ -1,7 +1,8 @@
 import SwiftUI
 import ServiceManagement
 
-struct SettingsView: View {
+/// Content of the standalone "DIBar Settings" window.
+struct SettingsWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -9,39 +10,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             settingsRow("Quality") {
-                // Custom compact menu: NSPopUpButton ignores small control
-                // sizing here and overflows the row height
-                Menu {
-                    ForEach(StreamQuality.allCases) { quality in
-                        Button {
-                            guard appState.selectedQuality != quality else { return }
-                            appState.selectedQuality = quality
-                            Prefs.save(key: "quality", value: quality.rawValue)
-                            appState.restartStreamForQualityChange()
-                        } label: {
-                            if quality == appState.selectedQuality {
-                                Text("\(Image(systemName: "checkmark")) \(quality.displayName)")
-                            } else {
-                                Text(quality.displayName)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(appState.selectedQuality.displayName)
-                            .font(.system(size: 11))
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-                    .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
+                qualityMenu
             }
 
             Divider()
@@ -94,15 +63,6 @@ struct SettingsView: View {
             }
             .help("Remembers the songs and stations you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
 
-            if appState.saveListeningHistory, appState.historyRecorder.todayListenedSeconds >= 60 {
-                settingsRow("Listened today") {
-                    Text(Self.formatListeningTime(appState.historyRecorder.todayListenedSeconds))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-
             Divider()
 
             Button {
@@ -136,22 +96,49 @@ struct SettingsView: View {
                     appState.logout()
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.red.opacity(0.85))
                 .font(.system(size: 11))
-
                 Spacer()
-
-                Button("Quit") {
-                    NSApp.terminate(nil)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .font(.system(size: 11))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .padding(.bottom, 2)
+            .padding(.vertical, 8)
         }
+        .padding(.vertical, 6)
+        .frame(width: 360)
+    }
+
+    private var qualityMenu: some View {
+        Menu {
+            ForEach(StreamQuality.allCases) { quality in
+                Button {
+                    guard appState.selectedQuality != quality else { return }
+                    appState.selectedQuality = quality
+                    Prefs.save(key: "quality", value: quality.rawValue)
+                    appState.restartStreamForQualityChange()
+                } label: {
+                    if quality == appState.selectedQuality {
+                        Text("\(Image(systemName: "checkmark")) \(quality.displayName)")
+                    } else {
+                        Text(quality.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(appState.selectedQuality.displayName)
+                    .font(.system(size: 11))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 
     /// Glyph for the preview card: honors the chip, shows the real state when
@@ -162,13 +149,6 @@ struct SettingsView: View {
             return MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
         }
         return .playing
-    }
-
-    private static func formatListeningTime(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
     /// Caption on the left, control flush right, uniform height and padding.

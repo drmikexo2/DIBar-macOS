@@ -105,7 +105,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.refreshLabel() }
         }
 
+        NotificationCenter.default.addObserver(forName: .dibarOpenSettings, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.showSettingsWindow() }
+        }
+        NotificationCenter.default.addObserver(forName: .dibarOpenHistory, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.showHistoryWindow() }
+        }
+
         setupDebugNotifications()
+    }
+
+    // MARK: - Auxiliary windows
+
+    private var settingsWindow: NSWindow?
+    private var historyWindow: NSWindow?
+
+    private func showSettingsWindow() {
+        if settingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: SettingsWindowView().environment(appState)
+            ))
+            window.title = "DIBar Settings"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow?.center()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func showHistoryWindow() {
+        if historyWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: HistoryWindowView().environment(appState)
+            ))
+            window.title = "Listening History"
+            window.styleMask = [.titled, .closable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.setContentSize(NSSize(width: 460, height: 480))
+            historyWindow = window
+        }
+        historyWindow?.makeKeyAndOrderFront(nil)
+        historyWindow?.center()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -211,6 +254,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 self?.appState.audioPlayer.stop()
             }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.openSettings"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.showSettingsWindow() }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.openHistory"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.showHistoryWindow() }
         }
 
         DistributedNotificationCenter.default().addObserver(

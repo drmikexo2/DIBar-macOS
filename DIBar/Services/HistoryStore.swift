@@ -245,6 +245,84 @@ final class HistoryStore {
         _ = step(stmt)
     }
 
+    // MARK: - Read queries (history window)
+
+    struct ListenEntry: Identifiable {
+        let id: Int64
+        let startedAt: Date
+        let duration: TimeInterval
+        let network: String
+        let channelName: String
+        let artist: String
+        let title: String
+    }
+
+    func recentListens(limit: Int) -> [ListenEntry] {
+        let sql = """
+        SELECT id, started_at, COALESCE(ended_at, last_seen_at) - started_at,
+               network, channel_name, artist, title
+        FROM listen_segments
+        WHERE (artist != '' OR title != '')
+        ORDER BY started_at DESC
+        LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        guard prepare(sql, &stmt) else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(limit))
+        var entries: [ListenEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            entries.append(ListenEntry(
+                id: sqlite3_column_int64(stmt, 0),
+                startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)),
+                duration: sqlite3_column_double(stmt, 2),
+                network: String(cString: sqlite3_column_text(stmt, 3)),
+                channelName: String(cString: sqlite3_column_text(stmt, 4)),
+                artist: String(cString: sqlite3_column_text(stmt, 5)),
+                title: String(cString: sqlite3_column_text(stmt, 6))
+            ))
+        }
+        return entries
+    }
+
+    struct VoteEntry: Identifiable {
+        let id: Int64
+        let votedAt: Date
+        let vote: Int
+        let network: String
+        let channelName: String
+        let artist: String
+        let title: String
+    }
+
+    func voteEntries(vote: Int, limit: Int) -> [VoteEntry] {
+        let sql = """
+        SELECT track_id, voted_at, vote, network, channel_name, artist, title
+        FROM song_votes
+        WHERE vote = ?
+        ORDER BY voted_at DESC
+        LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        guard prepare(sql, &stmt) else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(vote))
+        sqlite3_bind_int64(stmt, 2, Int64(limit))
+        var entries: [VoteEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            entries.append(VoteEntry(
+                id: sqlite3_column_int64(stmt, 0),
+                votedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)),
+                vote: Int(sqlite3_column_int64(stmt, 2)),
+                network: String(cString: sqlite3_column_text(stmt, 3)),
+                channelName: String(cString: sqlite3_column_text(stmt, 4)),
+                artist: String(cString: sqlite3_column_text(stmt, 5)),
+                title: String(cString: sqlite3_column_text(stmt, 6))
+            ))
+        }
+        return entries
+    }
+
     func checkpointAndClose() {
         _ = exec("PRAGMA wal_checkpoint(TRUNCATE);")
         sqlite3_close(db)

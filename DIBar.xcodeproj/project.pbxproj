@@ -24,6 +24,7 @@
 		A10000010000000000000013 /* Prefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* Prefs.swift */; };
 		A10000010000000000000014 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014 /* HistoryStore.swift */; };
 		A10000010000000000000015 /* HistoryRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* HistoryRecorder.swift */; };
+		A10000010000000000000016 /* HistoryWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* HistoryWindowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 		A20000010000000000000013 /* Prefs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prefs.swift; sourceTree = "<group>"; };
 		A20000010000000000000014 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		A20000010000000000000015 /* HistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryRecorder.swift; sourceTree = "<group>"; };
+		A20000010000000000000016 /* HistoryWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryWindowView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -122,6 +124,7 @@
 				A2000001000000000000000B /* SettingsView.swift */,
 				A20000010000000000000011 /* NetworkPicker.swift */,
 				A20000010000000000000012 /* ErrorBanner.swift */,
+				A20000010000000000000016 /* HistoryWindowView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -214,6 +217,7 @@
 				A10000010000000000000013 /* Prefs.swift in Sources */,
 				A10000010000000000000014 /* HistoryStore.swift in Sources */,
 				A10000010000000000000015 /* HistoryRecorder.swift in Sources */,
+				A10000010000000000000016 /* HistoryWindowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

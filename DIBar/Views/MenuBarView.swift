@@ -28,7 +28,7 @@ struct MenuBarView: View {
                     Divider()
                     StationListView()
                     Divider()
-                    SettingsView()
+                    footer
                 }
             } else {
                 LoginView()
@@ -36,4 +36,35 @@ struct MenuBarView: View {
         }
         .frame(width: 320)
     }
+
+    private var footer: some View {
+        HStack(spacing: 16) {
+            footerButton("Settings…") {
+                NotificationCenter.default.post(name: .dibarOpenSettings, object: nil)
+            }
+            footerButton("History…") {
+                NotificationCenter.default.post(name: .dibarOpenHistory, object: nil)
+            }
+            Spacer()
+            footerButton("Quit") {
+                NSApp.terminate(nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .font(.system(size: 11))
+            .cursor(.pointingHand)
+    }
+}
+
+extension Notification.Name {
+    static let dibarOpenSettings = Notification.Name("com.dibar.openSettings")
+    static let dibarOpenHistory = Notification.Name("com.dibar.openHistory")
 }

@@ -66,6 +66,20 @@ final class HistoryRecorder {
         store = nil
     }
 
+    // MARK: - History window queries
+
+    func recentListens(limit: Int = 500) -> [HistoryStore.ListenEntry] {
+        store?.recentListens(limit: limit) ?? []
+    }
+
+    func voteEntries(vote: Int, limit: Int = 500) -> [HistoryStore.VoteEntry] {
+        store?.voteEntries(vote: vote, limit: limit) ?? []
+    }
+
+    func allTimeListenedSeconds() -> TimeInterval {
+        store?.listenedSeconds(since: Date(timeIntervalSince1970: 0)) ?? 0
+    }
+
     // MARK: - Song votes (explicit user actions; recorded regardless of the
     // listening-history toggle)
 
