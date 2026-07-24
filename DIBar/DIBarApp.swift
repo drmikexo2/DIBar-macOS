@@ -18,11 +18,21 @@ struct DIBarApp: App {
     }
 }
 
+/// Borderless panels refuse key status by default; the search field needs it.
+private final class FloatingPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        orderOut(nil)
+    }
+}
+
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appState: AppState!
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var panel: FloatingPanel!
+    private var panelTopLeft: NSPoint?
     private var labelTimer: Timer?
     private var lastLabelKey: String?
 
@@ -31,18 +41,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePopover(_:))
-        // If the label grows while the width is pinned (popover open), shrink
-        // it to fit rather than clipping
-        statusItem.button?.imageScaling = .scaleProportionallyDown
+        statusItem.button?.action = #selector(togglePanel(_:))
 
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = false
-        popover.delegate = self
-        let hosting = NSHostingController(rootView: MenuBarView().environment(appState))
+        // A plain panel, positioned once at open time, instead of NSPopover:
+        // popovers permanently track their anchor, so a resizing status item
+        // (live label updates) made the panel jump around mid-interaction.
+        panel = FloatingPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 400),
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: true
+        )
+        panel.isFloatingPanel = true
+        panel.level = .popUpMenu
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isMovable = false
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+
+        let hosting = NSHostingController(
+            rootView: MenuBarView()
+                .environment(appState)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        )
         hosting.sizingOptions = .preferredContentSize
-        popover.contentViewController = hosting
+        panel.contentViewController = hosting
+
+        // Content height changes (artwork expand, list collapse) resize the
+        // window from its bottom edge; re-pin the top-left so the panel only
+        // ever grows/shrinks downward from where it opened.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.panel.isVisible, let topLeft = self.panelTopLeft else { return }
+                self.panel.setFrameTopLeftPoint(topLeft)
+            }
+        }
+
+        // Transient behavior: close when the panel stops being key — unless
+        // focus moved to a child window of ours (e.g. the site dropdown).
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.panel.isVisible else { return }
+                if let key = NSApp.keyWindow, key !== self.panel { return }
+                self.closePanel()
+            }
+        }
 
         refreshLabel()
         // The label only changes on track/state transitions; a 1s poll with a
@@ -54,23 +108,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         setupDebugNotifications()
     }
 
-    @objc private func togglePopover(_ sender: Any?) {
-        guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
+    @objc private func togglePanel(_ sender: Any?) {
+        if panel.isVisible {
+            closePanel()
         } else {
-            // Pin the status item's width while the popover is anchored to it;
-            // label updates resizing the item would make the popover jump.
-            statusItem.length = button.frame.width
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-            NSApp.activate(ignoringOtherApps: true)
+            openPanel()
         }
     }
 
-    func popoverDidClose(_ notification: Notification) {
-        // Let the status item resize to its content again
-        statusItem.length = NSStatusItem.variableLength
+    private func openPanel() {
+        guard let button = statusItem.button, let buttonWindow = button.window else { return }
+        let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+
+        panel.layoutIfNeeded()
+        let panelWidth = max(panel.frame.width, 320)
+        var x = buttonFrame.midX - panelWidth / 2
+        if let visible = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame {
+            x = min(max(x, visible.minX + 8), visible.maxX - panelWidth - 8)
+        }
+
+        // Chosen once; never recomputed while open — the panel stays put no
+        // matter how the status item resizes underneath.
+        let topLeft = NSPoint(x: x, y: buttonFrame.minY - 6)
+        panelTopLeft = topLeft
+        panel.setFrameTopLeftPoint(topLeft)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        statusItem.button?.highlight(true)
+    }
+
+    private func closePanel() {
+        panelTopLeft = nil
+        panel.orderOut(nil)
+        statusItem.button?.highlight(false)
     }
 
     private func refreshLabel() {
