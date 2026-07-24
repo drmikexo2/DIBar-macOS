@@ -13,9 +13,6 @@ struct NetworkPicker: View {
                         Image(systemName: "checkmark")
                     }
                     Text(network.displayName)
-                    if appState.knowsSubscriptions && !appState.hasActiveSubscription(for: network) {
-                        Image(systemName: "lock.fill")
-                    }
                 }
             }
         } label: {

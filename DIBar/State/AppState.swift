@@ -44,7 +44,6 @@ final class AppState {
     // UI
     var isLoading: Bool = false
     var errorMessage: String?
-    var subscriptionRequiredNetwork: Network?
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
     var showTrackInMenuBar: Bool = Prefs.read(key: "show_track_in_menu_bar") == "1" {
@@ -87,9 +86,15 @@ final class AppState {
         selectedNetwork.subscriptionURL
     }
 
-    /// Subscription for the currently selected network, if any.
+    /// Subscription for the selected network, falling back to any active
+    /// subscription — in practice one premium subscription streams every
+    /// AudioAddict network (verified against the live listen servers).
     var membershipSubscription: MembershipSubscription? {
-        subscription(for: selectedNetwork)
+        subscription(for: selectedNetwork) ?? activeSubscription
+    }
+
+    var activeSubscription: MembershipSubscription? {
+        subscriptions.first { ($0.status?.lowercased() ?? "") == "active" || $0.trial == true }
     }
 
     /// True once we have real subscription data to gate against.
@@ -113,13 +118,10 @@ final class AppState {
         }
     }
 
-    func hasActiveSubscription(for network: Network) -> Bool {
-        subscription(for: network) != nil
-    }
-
-    /// Only block playback when we positively know there is no subscription.
-    func canPlay(on network: Network) -> Bool {
-        !knowsSubscriptions || hasActiveSubscription(for: network)
+    /// True when a playback failure is plausibly a missing-premium problem:
+    /// we know the account's subscriptions and none of them is active.
+    var playbackFailureLooksLikeNoPremium: Bool {
+        knowsSubscriptions && activeSubscription == nil
     }
 
     var membershipHeaderLine: String {
@@ -132,7 +134,7 @@ final class AppState {
     var membershipDetailLine: String {
         guard let subscription = membershipSubscription else {
             if knowsSubscriptions {
-                return "No \(selectedNetwork.displayName) subscription — tap to subscribe"
+                return "No active subscription — tap to subscribe"
             }
             return "Tap to manage subscription"
         }
@@ -258,7 +260,6 @@ final class AppState {
         apiKey = nil
         memberId = nil
         subscriptions = []
-        subscriptionRequiredNetwork = nil
         isLoggedIn = false
         networkDataCache = [:]
         playingNetwork = nil
@@ -438,12 +439,6 @@ final class AppState {
     // MARK: - Playback
 
     func playChannel(_ channel: Channel) {
-        guard canPlay(on: selectedNetwork) else {
-            subscriptionRequiredNetwork = selectedNetwork
-            log.info("playChannel: blocked — no subscription for \(self.selectedNetwork.rawValue)")
-            return
-        }
-        subscriptionRequiredNetwork = nil
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
         else { return }

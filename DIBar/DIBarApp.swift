@@ -29,8 +29,12 @@ struct DIBarApp: App {
         .menuBarExtraStyle(.window)
     }
 
+    @MainActor private static var debugHandlersRegistered = false
+
     private func setupDebugNotifications() {
         #if DEBUG
+        guard !Self.debugHandlersRegistered else { return }
+        Self.debugHandlersRegistered = true
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.dibar.debug.playFirst"),
             object: nil,
@@ -43,6 +47,22 @@ struct DIBarApp: App {
                 }
                 log.error("DEBUG: playing '\(channel.name, privacy: .public)'")
                 appState.playChannel(channel)
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.selectNetwork"),
+            object: nil,
+            queue: .main
+        ) { note in
+            let raw = note.object as? String
+            Task { @MainActor in
+                guard let raw, let network = Network(rawValue: raw) else {
+                    log.error("DEBUG: unknown network '\(raw ?? "nil", privacy: .public)'")
+                    return
+                }
+                log.error("DEBUG: selecting network \(network.rawValue, privacy: .public)")
+                appState.selectNetwork(network)
             }
         }
 
