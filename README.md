@@ -2,7 +2,11 @@
 
 **A native macOS menu bar app for [DI.FM](https://di.fm) and the whole AudioAddict radio family** — JazzRadio, RadioTunes, ClassicalRadio, RockRadio, and ZenRadio. Built entirely in Swift — no Electron, no Chromium, no web views. Sits quietly in your menu bar using virtually zero CPU when idle and just a few MB of RAM.
 
-![DIBar Screenshot](screenshot.png)
+<img width="352" height="498" alt="image" src="https://github.com/user-attachments/assets/4dc191c8-cb75-4be8-9adc-f68821eca365" />
+<img width="485" height="457" alt="image" src="https://github.com/user-attachments/assets/59f9a6c7-4ee8-4889-865b-058ac8e97305" />
+<img width="362" height="295" alt="image" src="https://github.com/user-attachments/assets/e7f1d36f-fdc1-4ca4-beac-f26cc5707e12" />
+
+
 
 ## Features
 
