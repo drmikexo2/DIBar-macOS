@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		A10000010000000000000001 /* DIBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* DIBarApp.swift */; };
 		A10000010000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* Models.swift */; };
-		A10000010000000000000003 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* KeychainHelper.swift */; };
 		A10000010000000000000004 /* DIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* DIClient.swift */; };
 		A10000010000000000000005 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* AudioPlayer.swift */; };
 		A10000010000000000000006 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* AppState.swift */; };
@@ -28,7 +27,6 @@
 /* Begin PBXFileReference section */
 		A20000010000000000000001 /* DIBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DIBarApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		A20000010000000000000003 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A20000010000000000000004 /* DIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DIClient.swift; sourceTree = "<group>"; };
 		A20000010000000000000005 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		A20000010000000000000006 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -93,7 +91,6 @@
 		A40000010000000000000004 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A20000010000000000000003 /* KeychainHelper.swift */,
 				A20000010000000000000013 /* Prefs.swift */,
 				A20000010000000000000004 /* DIClient.swift */,
 				A20000010000000000000005 /* AudioPlayer.swift */,
@@ -197,7 +194,6 @@
 			files = (
 				A10000010000000000000001 /* DIBarApp.swift in Sources */,
 				A10000010000000000000002 /* Models.swift in Sources */,
-				A10000010000000000000003 /* KeychainHelper.swift in Sources */,
 				A10000010000000000000004 /* DIClient.swift in Sources */,
 				A10000010000000000000005 /* AudioPlayer.swift in Sources */,
 				A10000010000000000000006 /* AppState.swift in Sources */,

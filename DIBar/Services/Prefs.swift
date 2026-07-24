@@ -1,7 +1,6 @@
 import Foundation
 
-/// Non-secret preferences stored in UserDefaults. Secrets (listen_key,
-/// api_key) live in the real Keychain via KeychainHelper.
+/// App settings and session tokens, stored in UserDefaults.
 enum Prefs {
     private static let prefix = "com.dibar."
 

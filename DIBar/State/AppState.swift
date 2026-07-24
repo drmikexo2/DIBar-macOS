@@ -165,9 +165,6 @@ final class AppState {
         guard !didBootstrap else { return }
         didBootstrap = true
 
-        // Move secrets that earlier versions kept in UserDefaults into the Keychain
-        KeychainHelper.migrateFromUserDefaults(keys: ["listen_key", "api_key"])
-
         // Migrate legacy last-station keys (old name "favorite_station_id" was
         // misleading — it stores the last played station, not a favorite)
         if let oldStation = Prefs.read(key: "favorite_station_id") {
@@ -189,9 +186,9 @@ final class AppState {
         }
 
         log.info("bootstrap: checking stored credentials")
-        if let key = KeychainHelper.read(key: "listen_key") {
+        if let key = Prefs.read(key: "listen_key") {
             listenKey = key
-            apiKey = KeychainHelper.read(key: "api_key")
+            apiKey = Prefs.read(key: "api_key")
             if let idStr = Prefs.read(key: "member_id"), let id = Int(idStr) {
                 memberId = id
                 log.info("bootstrap: found stored memberId=\(id)")
@@ -218,9 +215,9 @@ final class AppState {
 
         do {
             let response = try await DIClient.authenticate(email: email, password: password)
-            KeychainHelper.save(key: "listen_key", value: response.listenKey)
+            Prefs.save(key: "listen_key", value: response.listenKey)
             if let ak = response.apiKey {
-                KeychainHelper.save(key: "api_key", value: ak)
+                Prefs.save(key: "api_key", value: ak)
                 log.info("login: apiKey saved")
             } else {
                 log.warning("login: apiKey is nil in auth response")
@@ -247,8 +244,8 @@ final class AppState {
 
     func logout() {
         audioPlayer.stop()
-        KeychainHelper.delete(key: "listen_key")
-        KeychainHelper.delete(key: "api_key")
+        Prefs.delete(key: "listen_key")
+        Prefs.delete(key: "api_key")
         Prefs.delete(key: "member_id")
         Prefs.delete(key: "selected_network")
         for network in Network.allCases {
