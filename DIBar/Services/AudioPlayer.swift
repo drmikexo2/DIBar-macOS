@@ -18,6 +18,7 @@ final class AudioPlayer {
     var isPlaying: Bool = false
     var volume: Float = 0.75
     var currentChannel: Channel?
+    var currentNetwork: Network?
     var currentTrack: NowPlaying?
     var currentArtImage: NSImage?
     var currentTrackIdentityToken: String?
@@ -44,7 +45,7 @@ final class AudioPlayer {
 
     // MARK: - Playback
 
-    func play(channel: Channel, streamURL: URL) {
+    func play(channel: Channel, streamURL: URL, network: Network) {
         // Stop existing polling and observation
         trackPollTask?.cancel()
         statusObservation?.invalidate()
@@ -88,12 +89,13 @@ final class AudioPlayer {
                 }
             }
         }
-        installMetadataOutput(on: item, channelId: channel.id, channelName: channel.name, sessionID: sessionID)
+        installMetadataOutput(on: item, channelId: channel.id, channelName: channel.name, network: network, sessionID: sessionID)
 
         player?.replaceCurrentItem(with: item)
         player?.play()
 
         currentChannel = channel
+        currentNetwork = network
         isPlaying = true
         currentArtImage = nil
         currentTrackIdentityToken = nil
@@ -114,7 +116,7 @@ final class AudioPlayer {
             downVotes: 0
         )
         updateNowPlaying()
-        startTrackPolling(channelId: channel.id, channelName: channel.name)
+        startTrackPolling(channelId: channel.id, channelName: channel.name, network: network)
     }
 
     func pause() {
@@ -144,6 +146,7 @@ final class AudioPlayer {
         player?.replaceCurrentItem(with: nil)
         isPlaying = false
         currentChannel = nil
+        currentNetwork = nil
         currentTrack = nil
         currentArtImage = nil
         currentTrackIdentityToken = nil
@@ -170,7 +173,7 @@ final class AudioPlayer {
         var info = [String: Any]()
         info[MPMediaItemPropertyTitle] = currentTrack?.title ?? currentChannel?.name ?? "DIBar"
         info[MPMediaItemPropertyArtist] = currentTrack?.artist ?? ""
-        info[MPMediaItemPropertyAlbumTitle] = currentChannel?.name ?? "DI.FM"
+        info[MPMediaItemPropertyAlbumTitle] = currentNetwork?.displayName ?? currentChannel?.name ?? "DIBar"
         info[MPNowPlayingInfoPropertyIsLiveStream] = true
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
 
@@ -213,9 +216,9 @@ final class AudioPlayer {
 
     // MARK: - Track Polling
 
-    private func startTrackPolling(channelId: Int, channelName: String) {
+    private func startTrackPolling(channelId: Int, channelName: String, network: Network) {
         trackPollTask = Task { [weak self] in
-            await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+            await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
 
             while !Task.isCancelled {
                 if let remaining = self?.apiTimeRemaining, remaining > 0, remaining < 30 {
@@ -225,7 +228,7 @@ final class AudioPlayer {
                     guard !Task.isCancelled, self != nil else { break }
 
                     let oldIdentity = self?.apiTrackIdentity
-                    await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+                    await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
 
                     // Retry at +3s, +5s, +7s, +9s if API hasn't updated
                     if self?.apiTrackIdentity == oldIdentity {
@@ -234,7 +237,7 @@ final class AudioPlayer {
                             log.error("POLL: retry \(attempt, privacy: .public)/4 (track_end+\(offset, privacy: .public)s)")
                             try? await Task.sleep(for: .seconds(2))
                             guard !Task.isCancelled, self != nil else { break }
-                            await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+                            await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
                             if self?.apiTrackIdentity != oldIdentity { break }
                         }
                     }
@@ -243,14 +246,14 @@ final class AudioPlayer {
                     log.error("POLL: sleeping \(self?.normalPollIntervalSeconds ?? 10, privacy: .public)s (apiTimeRemaining=\(self?.apiTimeRemaining?.description ?? "nil", privacy: .public))")
                     try? await Task.sleep(for: .seconds(self?.normalPollIntervalSeconds ?? 10))
                     guard !Task.isCancelled, self != nil else { break }
-                    await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+                    await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
                 }
             }
         }
     }
 
-    private func fetchAndUpdateTrack(channelId: Int, channelName: String) async {
-        guard let item = try? await DIClient.fetchCurrentTrack(channelId: channelId) else { return }
+    private func fetchAndUpdateTrack(channelId: Int, channelName: String, network: Network) async {
+        guard let item = try? await DIClient.fetchCurrentTrack(channelId: channelId, network: network) else { return }
 
         let apiArtist = item.artist ?? ""
         let apiTitle = item.title ?? item.track ?? ""
@@ -385,12 +388,13 @@ final class AudioPlayer {
         }
     }
 
-    private func installMetadataOutput(on item: AVPlayerItem, channelId: Int, channelName: String, sessionID: UUID) {
+    private func installMetadataOutput(on item: AVPlayerItem, channelId: Int, channelName: String, network: Network, sessionID: UUID) {
         let output = AVPlayerItemMetadataOutput(identifiers: nil)
         let delegate = StreamMetadataDelegate(
             owner: self,
             channelId: channelId,
             channelName: channelName,
+            network: network,
             sessionID: sessionID
         )
 
@@ -406,6 +410,7 @@ final class AudioPlayer {
         _ groups: [AVTimedMetadataGroup],
         channelId: Int,
         channelName: String,
+        network: Network,
         sessionID: UUID
     ) async {
         guard sessionID == playbackSessionID else { return }
@@ -413,13 +418,13 @@ final class AudioPlayer {
         for group in groups {
             for item in group.items {
                 guard let streamTitle = await extractIcyStreamTitle(from: item) else { continue }
-                await handleIcyStreamTitle(streamTitle, channelId: channelId, channelName: channelName, sessionID: sessionID)
+                await handleIcyStreamTitle(streamTitle, channelId: channelId, channelName: channelName, network: network, sessionID: sessionID)
                 return
             }
         }
     }
 
-    private func handleIcyStreamTitle(_ streamTitle: String, channelId: Int, channelName: String, sessionID: UUID) async {
+    private func handleIcyStreamTitle(_ streamTitle: String, channelId: Int, channelName: String, network: Network, sessionID: UUID) async {
         guard sessionID == playbackSessionID else { return }
 
         let normalizedTitle = streamTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -452,7 +457,7 @@ final class AudioPlayer {
             }
 
             log.error("ICY: initial stream title seed '\(normalizedTitle, privacy: .public)'")
-            await fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+            await fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
             return
         }
 
@@ -483,7 +488,7 @@ final class AudioPlayer {
         log.error("ICY: stream title update '\(normalizedTitle, privacy: .public)'")
 
         // Pull full metadata (duration/votes/art/started) as soon as stream title changes.
-        await fetchAndUpdateTrack(channelId: channelId, channelName: channelName)
+        await fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
     }
 
     private func extractIcyStreamTitle(from item: AVMetadataItem) async -> String? {
@@ -595,18 +600,20 @@ private final class StreamMetadataDelegate: NSObject, AVPlayerItemMetadataOutput
     weak var owner: AudioPlayer?
     let channelId: Int
     let channelName: String
+    let network: Network
     let sessionID: UUID
 
-    init(owner: AudioPlayer, channelId: Int, channelName: String, sessionID: UUID) {
+    init(owner: AudioPlayer, channelId: Int, channelName: String, network: Network, sessionID: UUID) {
         self.owner = owner
         self.channelId = channelId
         self.channelName = channelName
+        self.network = network
         self.sessionID = sessionID
     }
 
     func metadataOutput(_ output: AVPlayerItemMetadataOutput, didOutputTimedMetadataGroups groups: [AVTimedMetadataGroup], from track: AVPlayerItemTrack?) {
         Task { [weak owner] in
-            await owner?.handleTimedMetadata(groups, channelId: channelId, channelName: channelName, sessionID: sessionID)
+            await owner?.handleTimedMetadata(groups, channelId: channelId, channelName: channelName, network: network, sessionID: sessionID)
         }
     }
 }

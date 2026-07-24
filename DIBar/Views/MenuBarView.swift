@@ -9,6 +9,8 @@ struct MenuBarView: View {
                 VStack(spacing: 0) {
                     PlayerControlsView()
                     Divider()
+                    NetworkTabBar()
+                    Divider()
                     StationListView()
                     Divider()
                     SettingsView()

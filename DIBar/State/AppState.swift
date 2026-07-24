@@ -3,11 +3,15 @@ import os
 
 private let log = Logger(subsystem: "com.dibar", category: "AppState")
 
+struct NetworkData {
+    var channels: [Channel] = []
+    var favoriteChannelIds: Set<Int> = []
+    var isLoaded: Bool = false
+}
+
 @Observable
 @MainActor
 final class AppState {
-    private static let favoriteStationKey = "favorite_station_id"
-    static let subscriptionURL = URL(string: "https://www.di.fm/account/subscriptions")!
     private var didBootstrap = false
 
     // Auth
@@ -16,9 +20,12 @@ final class AppState {
     var apiKey: String?
     var memberId: Int?
 
-    // Data
-    var channels: [Channel] = []
-    var favoriteChannelIds: Set<Int> = []
+    // Network
+    var selectedNetwork: Network = .di
+    var playingNetwork: Network?
+    private var networkDataCache: [Network: NetworkData] = [:]
+
+    // Search
     var searchText: String = ""
 
     // Playback
@@ -39,6 +46,14 @@ final class AppState {
 
     // MARK: - Computed
 
+    var channels: [Channel] {
+        networkDataCache[selectedNetwork]?.channels ?? []
+    }
+
+    var favoriteChannelIds: Set<Int> {
+        networkDataCache[selectedNetwork]?.favoriteChannelIds ?? []
+    }
+
     var favoriteChannels: [Channel] {
         channels
             .filter { favoriteChannelIds.contains($0.id) }
@@ -49,6 +64,10 @@ final class AppState {
         let sorted = channels.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if searchText.isEmpty { return sorted }
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var subscriptionURL: URL {
+        selectedNetwork.subscriptionURL
     }
 
     var membershipHeaderLine: String {
@@ -86,6 +105,20 @@ final class AppState {
     func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
+
+        // Migrate old single-station key to per-network
+        if let oldStation = KeychainHelper.read(key: "favorite_station_id") {
+            KeychainHelper.save(key: "favorite_station_id.di", value: oldStation)
+            KeychainHelper.delete(key: "favorite_station_id")
+            log.info("bootstrap: migrated favorite_station_id to favorite_station_id.di")
+        }
+
+        // Restore last selected network
+        if let raw = KeychainHelper.read(key: "selected_network"), let net = Network(rawValue: raw) {
+            selectedNetwork = net
+            log.info("bootstrap: restored network=\(net.rawValue)")
+        }
+
         log.info("bootstrap: checking stored credentials")
         if let key = KeychainHelper.read(key: "listen_key") {
             listenKey = key
@@ -99,11 +132,11 @@ final class AppState {
             log.info("bootstrap: apiKey=\(self.apiKey != nil ? "present" : "nil")")
             isLoggedIn = true
             if apiKey != nil {
-                async let channelsLoad: Void = loadChannels()
+                async let channelsLoad: Void = loadChannels(for: selectedNetwork)
                 async let membershipLoad: Void = loadMembership()
                 _ = await (channelsLoad, membershipLoad)
             } else {
-                await loadChannels()
+                await loadChannels(for: selectedNetwork)
             }
         } else {
             log.info("bootstrap: no stored listen_key")
@@ -134,7 +167,7 @@ final class AppState {
             apiKey = response.apiKey
             membershipSubscription = response.subscriptions?.first
             isLoggedIn = true
-            await loadChannels()
+            await loadChannels(for: selectedNetwork)
         } catch {
             errorMessage = error.localizedDescription
             log.error("login error: \(error.localizedDescription)")
@@ -148,44 +181,83 @@ final class AppState {
         KeychainHelper.delete(key: "listen_key")
         KeychainHelper.delete(key: "api_key")
         KeychainHelper.delete(key: "member_id")
+        KeychainHelper.delete(key: "selected_network")
+        for network in Network.allCases {
+            KeychainHelper.delete(key: "favorite_station_id.\(network.rawValue)")
+        }
         listenKey = nil
         apiKey = nil
         memberId = nil
         membershipSubscription = nil
         isLoggedIn = false
-        channels = []
-        favoriteChannelIds = []
+        networkDataCache = [:]
+        playingNetwork = nil
+        selectedNetwork = .di
         searchText = ""
         errorMessage = nil
     }
 
-    func loadChannels() async {
+    // MARK: - Network Selection
+
+    func selectNetwork(_ network: Network) {
+        guard network != selectedNetwork else { return }
+        selectedNetwork = network
+        searchText = ""
+        KeychainHelper.save(key: "selected_network", value: network.rawValue)
+
+        if networkDataCache[network]?.isLoaded == true {
+            return
+        }
+
+        Task {
+            await loadChannels(for: network)
+        }
+    }
+
+    // MARK: - Data Loading
+
+    func loadChannels(for network: Network? = nil) async {
+        let target = network ?? selectedNetwork
         guard let key = listenKey else { return }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            async let channelsFetch = DIClient.fetchChannels(listenKey: key, quality: selectedQuality)
-            async let favoritesFetch: Void = loadFavorites()
-            channels = try await channelsFetch
+            async let channelsFetch = DIClient.fetchChannels(listenKey: key, quality: selectedQuality, network: target)
+            async let favoritesFetch: Void = loadFavorites(for: target)
+            let fetchedChannels = try await channelsFetch
             await favoritesFetch
-            log.info("loadChannels: \(self.channels.count) channels loaded")
-            restoreSavedStationIfNeeded()
+
+            var data = networkDataCache[target] ?? NetworkData()
+            data.channels = fetchedChannels
+            data.isLoaded = true
+            networkDataCache[target] = data
+
+            log.info("loadChannels(\(target.rawValue)): \(fetchedChannels.count) channels loaded")
+
+            if target == selectedNetwork {
+                restoreSavedStationIfNeeded()
+            }
         } catch {
             errorMessage = error.localizedDescription
-            log.error("loadChannels error: \(error.localizedDescription)")
+            log.error("loadChannels(\(target.rawValue)) error: \(error.localizedDescription)")
         }
     }
 
-    func loadFavorites() async {
+    func loadFavorites(for network: Network? = nil) async {
+        let target = network ?? selectedNetwork
         guard let ak = apiKey else {
             log.warning("loadFavorites: SKIPPED — no apiKey")
             return
         }
-        log.info("loadFavorites: calling API with apiKey")
-        let ids = (try? await DIClient.fetchFavorites(apiKey: ak)) ?? []
-        favoriteChannelIds = ids
-        log.info("loadFavorites: \(self.favoriteChannelIds.count) favorites set, favoriteChannels=\(self.favoriteChannels.count)")
+        log.info("loadFavorites(\(target.rawValue)): calling API")
+        let ids = (try? await DIClient.fetchFavorites(apiKey: ak, network: target)) ?? []
+
+        var data = networkDataCache[target] ?? NetworkData()
+        data.favoriteChannelIds = ids
+        networkDataCache[target] = data
+
+        log.info("loadFavorites(\(target.rawValue)): \(ids.count) favorites")
     }
 
     func loadMembership() async {
@@ -207,13 +279,16 @@ final class AppState {
         }
     }
 
+    // MARK: - Playback
+
     func playChannel(_ channel: Channel) {
         guard let key = listenKey,
-              let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality)
+              let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: selectedNetwork)
         else { return }
-        KeychainHelper.save(key: Self.favoriteStationKey, value: String(channel.id))
-        log.info("playChannel: \(channel.name) -> \(url)")
-        audioPlayer.play(channel: channel, streamURL: url)
+        KeychainHelper.save(key: "favorite_station_id.\(selectedNetwork.rawValue)", value: String(channel.id))
+        playingNetwork = selectedNetwork
+        log.info("playChannel: \(channel.name) on \(self.selectedNetwork.rawValue) -> \(url)")
+        audioPlayer.play(channel: channel, streamURL: url, network: selectedNetwork)
     }
 
     func togglePlayPause() {
@@ -222,15 +297,15 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
-        guard let raw = KeychainHelper.read(key: Self.favoriteStationKey),
+        guard let raw = KeychainHelper.read(key: "favorite_station_id.\(selectedNetwork.rawValue)"),
               let channelId = Int(raw)
         else { return }
         guard let channel = channels.first(where: { $0.id == channelId }) else {
-            log.warning("restoreSavedStationIfNeeded: saved station id=\(raw, privacy: .public) not found in channel list")
+            log.warning("restoreSavedStationIfNeeded: saved station id=\(raw, privacy: .public) not found on \(self.selectedNetwork.rawValue)")
             return
         }
 
-        log.info("restoreSavedStationIfNeeded: restoring '\(channel.name, privacy: .public)'")
+        log.info("restoreSavedStationIfNeeded: restoring '\(channel.name, privacy: .public)' on \(self.selectedNetwork.rawValue)")
         playChannel(channel)
     }
 

@@ -11,9 +11,13 @@ struct LoginView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
 
-            Text("DI.FM")
+            Text("AudioAddict")
                 .font(.title2)
                 .fontWeight(.semibold)
+
+            Text("Sign in to access all networks")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             TextField("Email", text: $email)
                 .textFieldStyle(.roundedBorder)

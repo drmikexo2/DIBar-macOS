@@ -71,6 +71,7 @@ struct ChannelRow: View {
 
     private var isPlaying: Bool {
         appState.audioPlayer.currentChannel?.id == channel.id
+            && appState.playingNetwork == appState.selectedNetwork
     }
 
     var body: some View {

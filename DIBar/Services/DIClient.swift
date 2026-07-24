@@ -22,26 +22,24 @@ enum DIClientError: LocalizedError {
 }
 
 enum DIClient {
-    static let baseURL = "https://api.audioaddict.com/v1/di"
-    static let listenBaseURL = "https://listen.di.fm"
     private static let basicAuth = "Basic ZXBoZW1lcm9uOmRheWVpcGgwbmVAcHA="
 
     // MARK: - Authenticate
 
     static func authenticate(email: String, password: String) async throws -> AuthResponse {
         let body = "username=\(formEncode(email))&password=\(formEncode(password))"
-        return try await authenticateMember(body: body)
+        return try await authenticateMember(body: body, network: .di)
     }
 
     static func fetchMembership(apiKey: String) async throws -> AuthResponse {
         let body = "api_key=\(formEncode(apiKey))"
-        return try await authenticateMember(body: body)
+        return try await authenticateMember(body: body, network: .di)
     }
 
     // MARK: - Fetch Channels
 
-    static func fetchChannels(listenKey: String, quality: StreamQuality) async throws -> [Channel] {
-        guard let url = URL(string: "\(baseURL)/channel_filters") else {
+    static func fetchChannels(listenKey: String, quality: StreamQuality, network: Network) async throws -> [Channel] {
+        guard let url = URL(string: "\(network.apiBaseURL)/channel_filters") else {
             throw DIClientError.invalidURL
         }
 
@@ -55,7 +53,7 @@ enum DIClient {
             throw DIClientError.httpError(code)
         }
 
-        log.info("channels: HTTP \(http.statusCode), \(data.count) bytes")
+        log.info("channels(\(network.rawValue)): HTTP \(http.statusCode), \(data.count) bytes")
 
         do {
             let filters = try JSONDecoder().decode([ChannelFilter].self, from: data)
@@ -67,7 +65,7 @@ enum DIClient {
             }
             var seen = Set<Int>()
             channels = channels.filter { seen.insert($0.id).inserted }
-            log.info("channels: \(channels.count) unique channels from channel_filters")
+            log.info("channels(\(network.rawValue)): \(channels.count) unique channels")
             return channels
         } catch {
             throw DIClientError.decodingError(error)
@@ -76,11 +74,11 @@ enum DIClient {
 
     // MARK: - Fetch Favorites
 
-    static func fetchFavorites(apiKey: String) async throws -> Set<Int> {
-        let urlStr = "\(baseURL)/members/1/favorites/channels?api_key=\(urlEncode(apiKey))"
+    static func fetchFavorites(apiKey: String, network: Network) async throws -> Set<Int> {
+        let urlStr = "\(network.apiBaseURL)/members/1/favorites/channels?api_key=\(urlEncode(apiKey))"
         guard let url = URL(string: urlStr) else { return [] }
 
-        log.info("favorites: GET /members/1/favorites/channels?api_key=***")
+        log.info("favorites(\(network.rawValue)): GET")
 
         var request = URLRequest(url: url)
         request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
@@ -88,13 +86,10 @@ enum DIClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         let http = response as? HTTPURLResponse
 
-        log.info("favorites: HTTP \(http?.statusCode ?? 0), \(data.count) bytes")
-        if let raw = String(data: data, encoding: .utf8) {
-            log.info("favorites raw (500): \(raw.prefix(500))")
-        }
+        log.info("favorites(\(network.rawValue)): HTTP \(http?.statusCode ?? 0), \(data.count) bytes")
 
         guard let http, (200...299).contains(http.statusCode) else {
-            log.error("favorites: HTTP error \(http?.statusCode ?? 0)")
+            log.error("favorites(\(network.rawValue)): HTTP error \(http?.statusCode ?? 0)")
             return []
         }
 
@@ -137,8 +132,8 @@ enum DIClient {
 
     // MARK: - Track History (Now Playing)
 
-    static func fetchCurrentTrack(channelId: Int) async throws -> TrackHistoryItem? {
-        guard let url = URL(string: "\(baseURL)/track_history/channel/\(channelId)") else {
+    static func fetchCurrentTrack(channelId: Int, network: Network) async throws -> TrackHistoryItem? {
+        guard let url = URL(string: "\(network.apiBaseURL)/track_history/channel/\(channelId)") else {
             return nil
         }
 
@@ -154,8 +149,8 @@ enum DIClient {
 
     // MARK: - Stream URL
 
-    static func streamURL(channelKey: String, listenKey: String, quality: StreamQuality) -> URL? {
-        URL(string: "\(listenBaseURL)/\(quality.rawValue)/\(urlEncode(channelKey)).pls?listen_key=\(urlEncode(listenKey))")
+    static func streamURL(channelKey: String, listenKey: String, quality: StreamQuality, network: Network) -> URL? {
+        URL(string: "\(network.listenBaseURL)/\(quality.rawValue)/\(urlEncode(channelKey)).pls?listen_key=\(urlEncode(listenKey))")
     }
 
     // MARK: - Helpers
@@ -175,8 +170,8 @@ enum DIClient {
         return Array(json.keys).sorted()
     }
 
-    private static func authenticateMember(body: String) async throws -> AuthResponse {
-        guard let url = URL(string: "\(baseURL)/members/authenticate") else {
+    private static func authenticateMember(body: String, network: Network) async throws -> AuthResponse {
+        guard let url = URL(string: "\(network.apiBaseURL)/members/authenticate") else {
             throw DIClientError.invalidURL
         }
 

@@ -31,7 +31,7 @@ struct SettingsView: View {
             Divider()
 
             Button {
-                openURL(AppState.subscriptionURL)
+                openURL(appState.subscriptionURL)
             } label: {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
