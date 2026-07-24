@@ -5,22 +5,23 @@ struct NetworkPicker: View {
 
     var body: some View {
         Menu {
-            // Picker gives native menu-item selection state (checkmark), which
-            // leaves each item's single image slot free for the speaker icon.
-            Picker("", selection: Binding(
-                get: { appState.selectedNetwork },
-                set: { appState.selectNetwork($0) }
-            )) {
-                ForEach(Network.allCases) { network in
+            // Speaker lives in the item's single image slot (leading, keeps
+            // names aligned); the selection checkmark is inline trailing text,
+            // since the native checkmark gutter forms its own ragged column.
+            ForEach(Network.allCases) { network in
+                Button {
+                    appState.selectNetwork(network)
+                } label: {
                     if appState.playingNetwork == network, appState.audioPlayer.currentChannel != nil {
-                        Label(network.displayName, systemImage: "speaker.wave.2.fill").tag(network)
+                        Image(systemName: "speaker.wave.2.fill")
+                    }
+                    if network == appState.selectedNetwork {
+                        Text("\(network.displayName)  \(Image(systemName: "checkmark"))")
                     } else {
-                        Text(network.displayName).tag(network)
+                        Text(network.displayName)
                     }
                 }
             }
-            .pickerStyle(.inline)
-            .labelsHidden()
         } label: {
             Text(appState.selectedNetwork.displayName)
                 .font(.system(size: 11, weight: .semibold))
