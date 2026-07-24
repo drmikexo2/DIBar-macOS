@@ -22,7 +22,7 @@ struct NetworkPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Switch radio network")
+        .help("Switch site")
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Network.allCases) { network in

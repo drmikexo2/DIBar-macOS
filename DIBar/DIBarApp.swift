@@ -18,11 +18,21 @@ struct DIBarApp: App {
             HStack(spacing: 3) {
                 Image("MenuBarIcon")
                     .renderingMode(.template)
-                if appState.showTrackInMenuBar, let title = appState.menuBarTrackText {
-                    Text(title)
-                } else if appState.audioPlayer.isPlaying {
-                    Image(systemName: "play.fill")
-                        .imageScale(.small)
+                switch (appState.menuBarLine1, appState.menuBarLine2) {
+                case (let line1?, let line2?):
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(line1)
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(line2)
+                            .font(.system(size: 9))
+                    }
+                case (let line?, nil), (nil, let line?):
+                    Text(line)
+                case (nil, nil):
+                    if appState.audioPlayer.isPlaying {
+                        Image(systemName: "play.fill")
+                            .imageScale(.small)
+                    }
                 }
             }
         }

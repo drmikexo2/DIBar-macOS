@@ -46,10 +46,19 @@ final class AppState {
     var errorMessage: String?
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
-    var showTrackInMenuBar: Bool = Prefs.read(key: "show_track_in_menu_bar") == "1" {
-        didSet {
-            Prefs.save(key: "show_track_in_menu_bar", value: showTrackInMenuBar ? "1" : "0")
-        }
+    // Menu bar text components (icon-only when all off). "Site" in the UI,
+    // Network in code.
+    var menuBarShowSite: Bool = Prefs.read(key: "menubar_show_site") == "1" {
+        didSet { Prefs.save(key: "menubar_show_site", value: menuBarShowSite ? "1" : "0") }
+    }
+    var menuBarShowStation: Bool = Prefs.read(key: "menubar_show_station") == "1" {
+        didSet { Prefs.save(key: "menubar_show_station", value: menuBarShowStation ? "1" : "0") }
+    }
+    var menuBarShowArtist: Bool = Prefs.read(key: "menubar_show_artist") == "1" {
+        didSet { Prefs.save(key: "menubar_show_artist", value: menuBarShowArtist ? "1" : "0") }
+    }
+    var menuBarShowSong: Bool = Prefs.read(key: "menubar_show_song") == "1" {
+        didSet { Prefs.save(key: "menubar_show_song", value: menuBarShowSong ? "1" : "0") }
     }
 
     // Favorites sync — flips false on a definitive 404/405 from the write
@@ -105,12 +114,37 @@ final class AppState {
     /// True once we have real subscription data to gate against.
     var knowsSubscriptions: Bool { !subscriptions.isEmpty }
 
-    /// Truncated "artist — title" for the menu bar, nil when idle or empty.
-    var menuBarTrackText: String? {
+    /// "Site · Station" for the menu bar, per the component toggles; nil when
+    /// idle or nothing is selected for this line.
+    var menuBarLine1: String? {
+        guard audioPlayer.isPlaying else { return nil }
+        var parts: [String] = []
+        if menuBarShowSite, let network = audioPlayer.currentNetwork {
+            parts.append(network.displayName)
+        }
+        if menuBarShowStation, let channel = audioPlayer.currentChannel {
+            parts.append(channel.name)
+        }
+        guard !parts.isEmpty else { return nil }
+        return Self.truncateForMenuBar(parts.joined(separator: " · "))
+    }
+
+    /// "Artist – Song" for the menu bar, per the component toggles.
+    var menuBarLine2: String? {
         guard audioPlayer.isPlaying, let track = audioPlayer.currentTrack else { return nil }
-        let text = track.displayText
-        guard !text.isEmpty, text != "Loading..." else { return nil }
-        return text.count > 30 ? String(text.prefix(29)) + "…" : text
+        var parts: [String] = []
+        if menuBarShowArtist, !track.artist.isEmpty {
+            parts.append(track.artist)
+        }
+        if menuBarShowSong, !track.title.isEmpty, track.title != "Loading..." {
+            parts.append(track.title)
+        }
+        guard !parts.isEmpty else { return nil }
+        return Self.truncateForMenuBar(parts.joined(separator: " – "))
+    }
+
+    private static func truncateForMenuBar(_ text: String) -> String {
+        text.count > 35 ? String(text.prefix(34)) + "…" : text
     }
 
     func subscription(for network: Network) -> MembershipSubscription? {
@@ -183,6 +217,13 @@ final class AppState {
                 Prefs.delete(key: "favorite_station_id.\(network.rawValue)")
             }
         }
+
+        // Migrate the old single "show track in menu bar" toggle to components
+        if Prefs.read(key: "show_track_in_menu_bar") == "1" {
+            menuBarShowArtist = true
+            menuBarShowSong = true
+        }
+        Prefs.delete(key: "show_track_in_menu_bar")
 
         // Restore last selected network
         if let raw = Prefs.read(key: "selected_network"), let net = Network(rawValue: raw) {

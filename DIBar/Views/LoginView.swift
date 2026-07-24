@@ -15,7 +15,7 @@ struct LoginView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Sign in to access all networks")
+            Text("Sign in to access all sites")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

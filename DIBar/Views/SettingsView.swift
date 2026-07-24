@@ -23,8 +23,33 @@ struct SettingsView: View {
                 }
             }
 
-            settingsRow("Show track in menu bar") {
-                Toggle("", isOn: Bindable(appState).showTrackInMenuBar)
+            Text("SHOW IN MENU BAR")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+            settingsRow("Site", example: liveExample(appState.audioPlayer.currentNetwork?.displayName) ?? "e.g. Jazz Radio") {
+                Toggle("", isOn: Bindable(appState).menuBarShowSite)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+
+            settingsRow("Station", example: liveExample(appState.audioPlayer.currentChannel?.name) ?? "e.g. Ambient") {
+                Toggle("", isOn: Bindable(appState).menuBarShowStation)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+
+            settingsRow("Artist") {
+                Toggle("", isOn: Bindable(appState).menuBarShowArtist)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+
+            settingsRow("Song") {
+                Toggle("", isOn: Bindable(appState).menuBarShowSong)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
             }
@@ -99,16 +124,31 @@ struct SettingsView: View {
         .padding(.top, 6)
     }
 
-    /// Caption on the left, control flush right, uniform height and padding.
-    private func settingsRow(_ caption: String, @ViewBuilder control: () -> some View) -> some View {
+    /// Caption on the left (with optional small example under it), control
+    /// flush right, uniform height and padding.
+    private func settingsRow(_ caption: String, example: String? = nil, @ViewBuilder control: () -> some View) -> some View {
         HStack {
-            Text(caption)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(caption)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                if let example {
+                    Text(example)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
             Spacer()
             control()
         }
         .frame(minHeight: 24)
         .padding(.horizontal, 16)
+    }
+
+    /// While playing, real values double as a preview of the menu bar text.
+    private func liveExample(_ value: String?) -> String? {
+        guard appState.audioPlayer.isPlaying, let value, !value.isEmpty else { return nil }
+        return value
     }
 }
