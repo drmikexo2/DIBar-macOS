@@ -73,7 +73,7 @@ struct SettingsView: View {
             }
             .help("Remembers the songs and stations you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
 
-            if appState.historyRecorder.todayListenedSeconds >= 60 {
+            if appState.saveListeningHistory, appState.historyRecorder.todayListenedSeconds >= 60 {
                 settingsRow("Listened today") {
                     Text(Self.formatListeningTime(appState.historyRecorder.todayListenedSeconds))
                         .font(.system(size: 11))
@@ -106,7 +106,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
 
             Divider()
 
@@ -128,9 +128,10 @@ struct SettingsView: View {
                 .font(.system(size: 11))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .padding(.bottom, 2)
         }
+        .padding(.vertical, 4)
     }
 
     /// Glyph for the preview card: honors the chip, shows the real state when
@@ -159,9 +160,9 @@ struct SettingsView: View {
             Spacer()
             control()
         }
-        .frame(minHeight: 24)
+        .frame(minHeight: 22)
         .padding(.horizontal, 16)
-        .padding(.vertical, 5)
+        .padding(.vertical, 2)
     }
 }
 
