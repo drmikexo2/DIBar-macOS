@@ -118,26 +118,53 @@ final class AppState {
     /// idle or nothing is selected for this line.
     var menuBarLine1: String? {
         guard audioPlayer.isPlaying else { return nil }
-        var parts: [String] = []
-        if menuBarShowSite, let network = audioPlayer.currentNetwork {
-            parts.append(network.displayName)
-        }
-        if menuBarShowStation, let channel = audioPlayer.currentChannel {
-            parts.append(channel.name)
-        }
-        guard !parts.isEmpty else { return nil }
-        return Self.truncateForMenuBar(parts.joined(separator: " · "))
+        return composedLine1(
+            site: audioPlayer.currentNetwork?.displayName,
+            station: audioPlayer.currentChannel?.name
+        )
     }
 
     /// "Artist – Song" for the menu bar, per the component toggles.
     var menuBarLine2: String? {
         guard audioPlayer.isPlaying, let track = audioPlayer.currentTrack else { return nil }
-        var parts: [String] = []
-        if menuBarShowArtist, !track.artist.isEmpty {
-            parts.append(track.artist)
+        return composedLine2(artist: track.artist, song: track.title)
+    }
+
+    /// Preview variants for the settings area: live values while playing,
+    /// placeholder examples otherwise. Same joining logic as the real label.
+    var menuBarPreviewLine1: String? {
+        composedLine1(
+            site: audioPlayer.isPlaying ? audioPlayer.currentNetwork?.displayName : "Jazz Radio",
+            station: audioPlayer.isPlaying ? audioPlayer.currentChannel?.name : "Ambient"
+        )
+    }
+
+    var menuBarPreviewLine2: String? {
+        if audioPlayer.isPlaying, let track = audioPlayer.currentTrack {
+            return composedLine2(artist: track.artist, song: track.title)
         }
-        if menuBarShowSong, !track.title.isEmpty, track.title != "Loading..." {
-            parts.append(track.title)
+        return composedLine2(artist: "Miles Davis", song: "So What")
+    }
+
+    private func composedLine1(site: String?, station: String?) -> String? {
+        var parts: [String] = []
+        if menuBarShowSite, let site, !site.isEmpty {
+            parts.append(site)
+        }
+        if menuBarShowStation, let station, !station.isEmpty {
+            parts.append(station)
+        }
+        guard !parts.isEmpty else { return nil }
+        return Self.truncateForMenuBar(parts.joined(separator: " · "))
+    }
+
+    private func composedLine2(artist: String?, song: String?) -> String? {
+        var parts: [String] = []
+        if menuBarShowArtist, let artist, !artist.isEmpty {
+            parts.append(artist)
+        }
+        if menuBarShowSong, let song, !song.isEmpty, song != "Loading..." {
+            parts.append(song)
         }
         guard !parts.isEmpty else { return nil }
         return Self.truncateForMenuBar(parts.joined(separator: " – "))

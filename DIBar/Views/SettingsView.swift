@@ -23,36 +23,31 @@ struct SettingsView: View {
                 }
             }
 
-            Text("SHOW IN MENU BAR")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
+            Divider()
 
-            settingsRow("Site", example: liveExample(appState.audioPlayer.currentNetwork?.displayName) ?? "e.g. Jazz Radio") {
-                Toggle("", isOn: Bindable(appState).menuBarShowSite)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
+            settingsRow("Menu bar") {
+                HStack(spacing: 4) {
+                    ToggleChip(title: "Site", isOn: Bindable(appState).menuBarShowSite)
+                    ToggleChip(title: "Station", isOn: Bindable(appState).menuBarShowStation)
+                    ToggleChip(title: "Artist", isOn: Bindable(appState).menuBarShowArtist)
+                    ToggleChip(title: "Song", isOn: Bindable(appState).menuBarShowSong)
+                }
             }
 
-            settingsRow("Station", example: liveExample(appState.audioPlayer.currentChannel?.name) ?? "e.g. Ambient") {
-                Toggle("", isOn: Bindable(appState).menuBarShowStation)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
+            if appState.menuBarPreviewLine1 != nil || appState.menuBarPreviewLine2 != nil {
+                Image(nsImage: MenuBarLabelRenderer.labelImage(
+                    line1: appState.menuBarPreviewLine1,
+                    line2: appState.menuBarPreviewLine2,
+                    playing: false
+                ))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
             }
 
-            settingsRow("Artist") {
-                Toggle("", isOn: Bindable(appState).menuBarShowArtist)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-            }
-
-            settingsRow("Song") {
-                Toggle("", isOn: Bindable(appState).menuBarShowSong)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-            }
+            Divider()
 
             settingsRow("Launch at login") {
                 Toggle("", isOn: $launchAtLogin)
@@ -124,31 +119,39 @@ struct SettingsView: View {
         .padding(.top, 6)
     }
 
-    /// Caption on the left (with optional small example under it), control
-    /// flush right, uniform height and padding.
-    private func settingsRow(_ caption: String, example: String? = nil, @ViewBuilder control: () -> some View) -> some View {
+    /// Caption on the left, control flush right, uniform height and padding.
+    private func settingsRow(_ caption: String, @ViewBuilder control: () -> some View) -> some View {
         HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(caption)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                if let example {
-                    Text(example)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
+            Text(caption)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
             Spacer()
             control()
         }
         .frame(minHeight: 24)
         .padding(.horizontal, 16)
     }
+}
 
-    /// While playing, real values double as a preview of the menu bar text.
-    private func liveExample(_ value: String?) -> String? {
-        guard appState.audioPlayer.isPlaying, let value, !value.isEmpty else { return nil }
-        return value
+// MARK: - Toggle Chip
+
+private struct ToggleChip: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button(action: { isOn.toggle() }) {
+            Text(title)
+                .font(.system(size: 10, weight: isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? Color.white : Color.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
+                    in: Capsule()
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
