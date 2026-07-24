@@ -32,6 +32,15 @@ final class AppState {
     // Playback
     let audioPlayer = AudioPlayer()
 
+    // Listening history
+    let historyRecorder: HistoryRecorder
+    var saveListeningHistory: Bool = Prefs.read(key: "save_history") != "0" {
+        didSet {
+            Prefs.save(key: "save_history", value: saveListeningHistory ? "1" : "0")
+            historyRecorder.setEnabled(saveListeningHistory)
+        }
+    }
+
     // Settings
     var selectedQuality: StreamQuality = {
         if let raw = Prefs.read(key: "quality"), let q = StreamQuality(rawValue: raw) {
@@ -225,6 +234,9 @@ final class AppState {
     // MARK: - Lifecycle
 
     init() {
+        historyRecorder = HistoryRecorder(player: audioPlayer)
+        historyRecorder.setEnabled(saveListeningHistory)
+        historyRecorder.start()
         Task { [weak self] in
             await self?.bootstrap()
         }

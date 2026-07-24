@@ -22,6 +22,8 @@
 		A10000010000000000000011 /* NetworkPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* NetworkPicker.swift */; };
 		A10000010000000000000012 /* ErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* ErrorBanner.swift */; };
 		A10000010000000000000013 /* Prefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* Prefs.swift */; };
+		A10000010000000000000014 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014 /* HistoryStore.swift */; };
+		A10000010000000000000015 /* HistoryRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* HistoryRecorder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +45,8 @@
 		A20000010000000000000011 /* NetworkPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPicker.swift; sourceTree = "<group>"; };
 		A20000010000000000000012 /* ErrorBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBanner.swift; sourceTree = "<group>"; };
 		A20000010000000000000013 /* Prefs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prefs.swift; sourceTree = "<group>"; };
+		A20000010000000000000014 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+		A20000010000000000000015 /* HistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryRecorder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +96,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000013 /* Prefs.swift */,
+				A20000010000000000000014 /* HistoryStore.swift */,
+				A20000010000000000000015 /* HistoryRecorder.swift */,
 				A20000010000000000000004 /* DIClient.swift */,
 				A20000010000000000000005 /* AudioPlayer.swift */,
 			);
@@ -206,6 +212,8 @@
 				A10000010000000000000011 /* NetworkPicker.swift in Sources */,
 				A10000010000000000000012 /* ErrorBanner.swift in Sources */,
 				A10000010000000000000013 /* Prefs.swift in Sources */,
+				A10000010000000000000014 /* HistoryStore.swift in Sources */,
+				A10000010000000000000015 /* HistoryRecorder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

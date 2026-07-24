@@ -66,6 +66,21 @@ struct SettingsView: View {
                     }
             }
 
+            settingsRow("Save history") {
+                Toggle("", isOn: Bindable(appState).saveListeningHistory)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+
+            if appState.historyRecorder.todayListenedSeconds >= 60 {
+                settingsRow("Listened today") {
+                    Text(Self.formatListeningTime(appState.historyRecorder.todayListenedSeconds))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+
             Divider()
 
             Button {
@@ -125,6 +140,13 @@ struct SettingsView: View {
             return MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
         }
         return .playing
+    }
+
+    private static func formatListeningTime(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
     /// Caption on the left, control flush right, uniform height and padding.

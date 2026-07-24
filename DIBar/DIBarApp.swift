@@ -108,6 +108,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupDebugNotifications()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        appState?.historyRecorder.appWillTerminate()
+    }
+
     @objc private func togglePanel(_ sender: Any?) {
         if panel.isVisible {
             closePanel()
@@ -186,6 +190,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 log.error("DEBUG: selecting network \(network.rawValue, privacy: .public)")
                 self?.appState.selectNetwork(network)
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.togglePlayPause"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.appState.togglePlayPause()
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.dibar.debug.stop"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.appState.audioPlayer.stop()
             }
         }
 
