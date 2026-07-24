@@ -34,18 +34,16 @@ struct SettingsView: View {
                 }
             }
 
-            if appState.menuBarPreviewLine1 != nil || appState.menuBarPreviewLine2 != nil {
-                Image(nsImage: MenuBarLabelRenderer.labelImage(
-                    line1: appState.menuBarPreviewLine1,
-                    line2: appState.menuBarPreviewLine2,
-                    playing: false
-                ))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 8)
-            }
+            Image(nsImage: MenuBarLabelRenderer.labelImage(
+                line1: appState.menuBarPreviewLine1,
+                line2: appState.menuBarPreviewLine2,
+                glyph: MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+            ))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
 
             Divider()
 

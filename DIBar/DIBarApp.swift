@@ -65,11 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let line1 = appState.menuBarLine1
         let line2 = appState.menuBarLine2
-        let playing = appState.audioPlayer.isPlaying
-        let key = "\(line1 ?? "")|\(line2 ?? "")|\(playing)"
+        let glyph = MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+        let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)"
         guard key != lastLabelKey else { return }
         lastLabelKey = key
-        button.image = MenuBarLabelRenderer.labelImage(line1: line1, line2: line2, playing: playing)
+        button.image = MenuBarLabelRenderer.labelImage(line1: line1, line2: line2, glyph: glyph)
     }
 
     private func setupDebugNotifications() {
@@ -118,14 +118,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Composes the status item label (icon + optional play glyph or one/two
-/// text lines) into a single template image.
+/// Composes the status item label (icon + optional play/pause glyph or
+/// one/two text lines) into a single template image.
 enum MenuBarLabelRenderer {
+    enum PlaybackGlyph: String {
+        case none, playing, paused
+
+        var symbolName: String? {
+            switch self {
+            case .none: return nil
+            case .playing: return "play.fill"
+            case .paused: return "pause.fill"
+            }
+        }
+    }
+
     private static let height: CGFloat = 22
     private static let iconSide: CGFloat = 18
     private static let gap: CGFloat = 4
 
-    static func labelImage(line1: String?, line2: String?, playing: Bool) -> NSImage {
+    @MainActor
+    static func glyph(for player: AudioPlayer) -> PlaybackGlyph {
+        if player.isPlaying { return .playing }
+        if player.currentChannel != nil { return .paused }
+        return .none
+    }
+
+    static func labelImage(line1: String?, line2: String?, glyph: PlaybackGlyph) -> NSImage {
         // (text, drawing origin in points, unflipped coordinates)
         var texts: [(NSAttributedString, NSPoint)] = []
         let textX = iconSide + gap
@@ -148,17 +167,19 @@ enum MenuBarLabelRenderer {
             ])
             texts = [(t, NSPoint(x: textX, y: (height - t.size().height) / 2))]
         case (nil, nil):
-            if playing {
-                let t = NSAttributedString(string: "▶", attributes: [
-                    .font: NSFont.systemFont(ofSize: 8),
-                    .foregroundColor: NSColor.black,
-                ])
-                texts = [(t, NSPoint(x: textX - 1, y: (height - t.size().height) / 2))]
-            }
+            break
+        }
+
+        // Transport glyph shown only in icon-only mode
+        var symbol: NSImage?
+        if texts.isEmpty, let symbolName = glyph.symbolName {
+            symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: glyph.rawValue)?
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
         }
 
         let textWidth = texts.map { $0.0.size().width + ($0.1.x - iconSide) }.max() ?? -gap
-        let width = ceil(iconSide + max(textWidth, 0) + (texts.isEmpty ? 0 : 1))
+        let symbolWidth = symbol.map { gap + $0.size.width } ?? 0
+        let width = ceil(iconSide + max(textWidth, 0) + symbolWidth + (texts.isEmpty ? 0 : 1))
 
         let scale: CGFloat = 2
         guard let rep = NSBitmapImageRep(
@@ -186,6 +207,15 @@ enum MenuBarLabelRenderer {
             }
             for (text, point) in texts {
                 text.draw(at: point)
+            }
+            if let symbol {
+                let symbolSize = symbol.size
+                symbol.draw(in: NSRect(
+                    x: iconSide + gap,
+                    y: (height - symbolSize.height) / 2,
+                    width: symbolSize.width,
+                    height: symbolSize.height
+                ))
             }
             context.flushGraphics()
         }
