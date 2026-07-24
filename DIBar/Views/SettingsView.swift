@@ -66,11 +66,12 @@ struct SettingsView: View {
                     }
             }
 
-            settingsRow("Save history") {
+            settingsRow("Save song history (on this Mac)") {
                 Toggle("", isOn: Bindable(appState).saveListeningHistory)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
             }
+            .help("Remembers the songs and stations you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
 
             if appState.historyRecorder.todayListenedSeconds >= 60 {
                 settingsRow("Listened today") {
