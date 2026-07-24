@@ -11,13 +11,29 @@ struct LoginView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
 
-            Text("AudioAddict")
+            Text("Sign in with DI.FM")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Sign in to access all sites")
+            Text("One login works for all of these sites:")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            // The family of sites, so users arriving from any of them see
+            // theirs listed. The umbrella company name means nothing to them.
+            VStack(spacing: 5) {
+                HStack(spacing: 5) {
+                    ForEach(Array(Network.allCases.prefix(3)), id: \.self) { network in
+                        siteChip(network)
+                    }
+                }
+                HStack(spacing: 5) {
+                    ForEach(Array(Network.allCases.dropFirst(3)), id: \.self) { network in
+                        siteChip(network)
+                    }
+                }
+            }
+            .padding(.bottom, 4)
 
             TextField("Email", text: $email)
                 .textFieldStyle(.roundedBorder)
@@ -56,6 +72,20 @@ struct LoginView: View {
             .font(.caption)
         }
         .padding(24)
+    }
+
+    private func siteChip(_ network: Network) -> some View {
+        Text(network.listenDomain)
+            .font(.system(size: 10, weight: network == .di ? .semibold : .regular))
+            .foregroundStyle(network == .di ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                network == .di
+                    ? AnyShapeStyle(Color.accentColor.opacity(0.12))
+                    : AnyShapeStyle(.quaternary),
+                in: Capsule()
+            )
     }
 
     private func login() {
