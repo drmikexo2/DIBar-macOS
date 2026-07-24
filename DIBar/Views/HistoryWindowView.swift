@@ -13,7 +13,6 @@ struct HistoryWindowView: View {
     @State private var tab: Tab = .listened
     @State private var listens: [HistoryStore.ListenEntry] = []
     @State private var votes: [HistoryStore.VoteEntry] = []
-    @State private var allTimeSeconds: TimeInterval = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +29,7 @@ struct HistoryWindowView: View {
                 Spacer()
 
                 if tab == .listened {
-                    Text("Today \(Self.formatTime(appState.historyRecorder.todayListenedSeconds)) · All time \(Self.formatTime(allTimeSeconds))")
+                    Text("Today \(Self.formatTime(appState.historyRecorder.todayListenedSeconds)) · All time \(Self.formatTime(appState.historyRecorder.allTimeListenedSeconds))")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -72,7 +71,6 @@ struct HistoryWindowView: View {
         switch tab {
         case .listened:
             listens = appState.historyRecorder.recentListens()
-            allTimeSeconds = appState.historyRecorder.allTimeListenedSeconds()
         case .liked:
             votes = appState.historyRecorder.voteEntries(vote: 1)
         case .disliked:

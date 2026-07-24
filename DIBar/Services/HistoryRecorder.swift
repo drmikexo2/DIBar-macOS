@@ -34,8 +34,10 @@ final class HistoryRecorder {
     private var lastTickAt: Date?
     private var tickCount = 0
 
-    /// Total listening time today, refreshed periodically for the settings teaser.
+    /// Listening totals, refreshed together every ~15s and on segment close
+    /// so they can never disagree in the UI.
     private(set) var todayListenedSeconds: TimeInterval = 0
+    private(set) var allTimeListenedSeconds: TimeInterval = 0
 
     init(player: AudioPlayer) {
         self.player = player
@@ -74,10 +76,6 @@ final class HistoryRecorder {
 
     func voteEntries(vote: Int, limit: Int = 500) -> [HistoryStore.VoteEntry] {
         store?.voteEntries(vote: vote, limit: limit) ?? []
-    }
-
-    func allTimeListenedSeconds() -> TimeInterval {
-        store?.listenedSeconds(since: Date(timeIntervalSince1970: 0)) ?? 0
     }
 
     // MARK: - Song votes (explicit user actions; recorded regardless of the
@@ -201,6 +199,7 @@ final class HistoryRecorder {
     private func refreshTodayTotal() {
         guard let store else { return }
         todayListenedSeconds = store.listenedSeconds(since: Calendar.current.startOfDay(for: Date()))
+        allTimeListenedSeconds = store.listenedSeconds(since: Date(timeIntervalSince1970: 0))
     }
 
     private func sanitize(_ text: String?) -> String {
