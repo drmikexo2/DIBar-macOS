@@ -51,7 +51,7 @@ struct StationListView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .background(.quaternary.opacity(0.5))
 
@@ -215,7 +215,7 @@ struct ChannelRow: View {
                 .frame(width: 16, height: 14)
             }
             .padding(.leading, 16)
-            .padding(.trailing, 18)
+            .padding(.trailing, 13)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
         }

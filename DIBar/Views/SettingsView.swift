@@ -7,7 +7,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             settingsRow("Quality") {
                 Picker("", selection: Bindable(appState).selectedQuality) {
                     ForEach(StreamQuality.allCases) { quality in
@@ -44,7 +44,7 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
                 .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 2)
+                .padding(.bottom, 8)
             }
 
             Divider()
@@ -91,7 +91,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
-            .padding(.vertical, 2)
+            .padding(.vertical, 8)
 
             Divider()
 
@@ -113,10 +113,9 @@ struct SettingsView: View {
                 .font(.system(size: 11))
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-            .padding(.top, 4)
+            .padding(.vertical, 8)
+            .padding(.bottom, 2)
         }
-        .padding(.top, 6)
     }
 
     /// Caption on the left, control flush right, uniform height and padding.
@@ -130,6 +129,7 @@ struct SettingsView: View {
         }
         .frame(minHeight: 24)
         .padding(.horizontal, 16)
+        .padding(.vertical, 5)
     }
 }
 
