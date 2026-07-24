@@ -1,37 +1,94 @@
 import SwiftUI
 
+/// Custom dropdown (not a native Menu — NSMenu items can't right-justify
+/// icons or color individual rows) styled to match the station list:
+/// checkmark on the left for the selected network, accent text + blue
+/// speaker on the right for the playing one.
 struct NetworkPicker: View {
     @Environment(AppState.self) private var appState
+    @State private var isOpen = false
 
     var body: some View {
-        Menu {
-            ForEach(Network.allCases) { network in
-                Button {
-                    appState.selectNetwork(network)
-                } label: {
-                    itemText(for: network)
+        Button {
+            isOpen.toggle()
+        } label: {
+            HStack(spacing: 3) {
+                Text(appState.selectedNetwork.displayName)
+                    .font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Switch radio network")
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Network.allCases) { network in
+                    NetworkRow(network: network) {
+                        appState.selectNetwork(network)
+                        isOpen = false
+                    }
                 }
             }
-        } label: {
-            Text(appState.selectedNetwork.displayName)
-                .font(.system(size: 11, weight: .semibold))
+            .padding(.vertical, 4)
+            .frame(width: 200)
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Switch radio network")
+    }
+}
+
+private struct NetworkRow: View {
+    @Environment(AppState.self) private var appState
+    let network: Network
+    let action: () -> Void
+    @State private var isHovered = false
+
+    private var isSelected: Bool {
+        network == appState.selectedNetwork
     }
 
-    /// "(speaker) (checkmark) Name" — glyphs inline so both can appear at
-    /// once (a menu item's image slot only fits a single image).
-    private func itemText(for network: Network) -> Text {
-        let playing = appState.playingNetwork == network && appState.audioPlayer.currentChannel != nil
-        let selected = network == appState.selectedNetwork
-        // Every row renders both glyph slots — invisible when inactive — so
-        // the station names share one aligned column.
-        let speaker = Text("\(Image(systemName: "speaker.wave.2.fill"))")
-            .foregroundStyle(playing ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
-        let check = Text("\(Image(systemName: "checkmark"))")
-            .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
-        return Text("\(speaker) \(check) \(network.displayName)")
+    private var isPlaying: Bool {
+        appState.playingNetwork == network && appState.audioPlayer.currentChannel != nil
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Group {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 16, height: 14)
+
+                Text(network.displayName)
+                    .font(.system(size: 12))
+                    .fontWeight(isPlaying ? .semibold : .regular)
+                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+
+                Spacer()
+
+                Group {
+                    if isPlaying {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 16, height: 14)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+        .onHover { isHovered = $0 }
     }
 }
