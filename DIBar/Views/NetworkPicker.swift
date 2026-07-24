@@ -26,15 +26,12 @@ struct NetworkPicker: View {
     private func itemText(for network: Network) -> Text {
         let playing = appState.playingNetwork == network && appState.audioPlayer.currentChannel != nil
         let selected = network == appState.selectedNetwork
-        switch (playing, selected) {
-        case (true, true):
-            return Text("\(Image(systemName: "speaker.wave.2.fill")) \(Image(systemName: "checkmark")) \(network.displayName)")
-        case (true, false):
-            return Text("\(Image(systemName: "speaker.wave.2.fill")) \(network.displayName)")
-        case (false, true):
-            return Text("\(Image(systemName: "checkmark")) \(network.displayName)")
-        case (false, false):
-            return Text(network.displayName)
-        }
+        // Every row renders both glyph slots — invisible when inactive — so
+        // the station names share one aligned column.
+        let speaker = Text("\(Image(systemName: "speaker.wave.2.fill"))")
+            .foregroundStyle(playing ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
+        let check = Text("\(Image(systemName: "checkmark"))")
+            .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
+        return Text("\(speaker) \(check) \(network.displayName)")
     }
 }
