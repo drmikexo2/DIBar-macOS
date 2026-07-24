@@ -19,7 +19,7 @@ struct DIBarApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var appState: AppState!
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
+        popover.delegate = self
         let hosting = NSHostingController(rootView: MenuBarView().environment(appState))
         hosting.sizingOptions = .preferredContentSize
         popover.contentViewController = hosting
@@ -61,8 +62,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func popoverDidClose(_ notification: Notification) {
+        // Apply any label change deferred while the popover was open
+        refreshLabel()
+    }
+
     private func refreshLabel() {
         guard let button = statusItem.button else { return }
+        // Never resize the status item while the popover is anchored to it —
+        // a width change makes the popover jump around under the user.
+        guard popover?.isShown != true else { return }
         let line1 = appState.menuBarLine1
         let line2 = appState.menuBarLine2
         let glyph = MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
