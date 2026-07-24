@@ -20,12 +20,9 @@ struct DIBarApp: App {
                     .renderingMode(.template)
                 switch (appState.menuBarLine1, appState.menuBarLine2) {
                 case (let line1?, let line2?):
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(line1)
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(line2)
-                            .font(.system(size: 9))
-                    }
+                    // MenuBarExtra labels flatten stacked views, so two-line
+                    // text is drawn into a template image instead.
+                    Image(nsImage: MenuBarLabelRenderer.twoLineImage(line1: line1, line2: line2))
                 case (let line?, nil), (nil, let line?):
                     Text(line)
                 case (nil, nil):
@@ -86,5 +83,37 @@ struct DIBarApp: App {
 
         log.error("DEBUG: notification handlers registered")
         #endif
+    }
+}
+
+/// Draws two small text lines into a template image for the menu bar label,
+/// since MenuBarExtra flattens multi-line SwiftUI views.
+enum MenuBarLabelRenderer {
+    static func twoLineImage(line1: String, line2: String) -> NSImage {
+        let attrs1: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 9, weight: .semibold),
+            .foregroundColor: NSColor.black,
+        ]
+        let attrs2: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 9),
+            .foregroundColor: NSColor.black,
+        ]
+        let text1 = NSAttributedString(string: line1, attributes: attrs1)
+        let text2 = NSAttributedString(string: line2, attributes: attrs2)
+
+        let lineHeight: CGFloat = 11
+        let size = NSSize(
+            width: ceil(max(text1.size().width, text2.size().width)),
+            height: lineHeight * 2
+        )
+        let image = NSImage(size: size, flipped: true) { _ in
+            text1.draw(at: NSPoint(x: 0, y: 0))
+            text2.draw(at: NSPoint(x: 0, y: lineHeight))
+            return true
+        }
+        // Template rendering keeps only the alpha channel, adapting the text
+        // to light/dark menu bars like any status item icon.
+        image.isTemplate = true
+        return image
     }
 }
