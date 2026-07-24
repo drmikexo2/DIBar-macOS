@@ -27,6 +27,7 @@ struct SettingsView: View {
 
             settingsRow("Menu bar") {
                 HStack(spacing: 4) {
+                    ToggleChip(title: "play/pause", systemImage: "playpause.fill", isOn: Bindable(appState).menuBarShowPlayState)
                     ToggleChip(title: "Site", isOn: Bindable(appState).menuBarShowSite)
                     ToggleChip(title: "Station", isOn: Bindable(appState).menuBarShowStation)
                     ToggleChip(title: "Artist", isOn: Bindable(appState).menuBarShowArtist)
@@ -37,7 +38,7 @@ struct SettingsView: View {
             Image(nsImage: MenuBarLabelRenderer.labelImage(
                 line1: appState.menuBarPreviewLine1,
                 line2: appState.menuBarPreviewLine2,
-                glyph: MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+                glyph: previewGlyph
             ))
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -116,6 +117,16 @@ struct SettingsView: View {
         }
     }
 
+    /// Glyph for the preview card: honors the chip, shows the real state when
+    /// a station is loaded, and demonstrates "playing" as the idle placeholder.
+    private var previewGlyph: MenuBarLabelRenderer.PlaybackGlyph {
+        guard appState.menuBarShowPlayState else { return .none }
+        if appState.audioPlayer.currentChannel != nil {
+            return MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+        }
+        return .playing
+    }
+
     /// Caption on the left, control flush right, uniform height and padding.
     private func settingsRow(_ caption: String, @ViewBuilder control: () -> some View) -> some View {
         HStack {
@@ -135,13 +146,21 @@ struct SettingsView: View {
 
 private struct ToggleChip: View {
     let title: String
+    var systemImage: String? = nil
     @Binding var isOn: Bool
     @State private var isHovered = false
 
     var body: some View {
         Button(action: { isOn.toggle() }) {
-            Text(title)
-                .font(.system(size: 10, weight: isOn ? .semibold : .regular))
+            Group {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: isOn ? .semibold : .regular))
+                } else {
+                    Text(title)
+                        .font(.system(size: 10, weight: isOn ? .semibold : .regular))
+                }
+            }
                 .foregroundStyle(isOn ? Color.white : Color.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)

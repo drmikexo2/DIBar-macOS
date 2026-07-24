@@ -147,7 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let line1 = appState.menuBarLine1
         let line2 = appState.menuBarLine2
-        let glyph = MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+        let glyph = appState.menuBarShowPlayState
+            ? MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
+            : MenuBarLabelRenderer.PlaybackGlyph.none
         let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)"
         guard key != lastLabelKey else { return }
         lastLabelKey = key
@@ -228,9 +230,18 @@ enum MenuBarLabelRenderer {
     }
 
     static func labelImage(line1: String?, line2: String?, glyph: PlaybackGlyph) -> NSImage {
+        // Layout: [symbol][symbolGap][icon][gap][text lines]
+        var symbol: NSImage?
+        if let symbolName = glyph.symbolName {
+            symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: glyph.rawValue)?
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+        }
+        let symbolLeading = symbol.map { $0.size.width + symbolGap } ?? 0
+        let iconX = symbolLeading
+
         // (text, drawing origin in points, unflipped coordinates)
         var texts: [(NSAttributedString, NSPoint)] = []
-        let textX = iconSide + gap
+        let textX = iconX + iconSide + gap
 
         switch (line1, line2) {
         case (let l1?, let l2?):
@@ -253,16 +264,8 @@ enum MenuBarLabelRenderer {
             break
         }
 
-        // Transport glyph shown only in icon-only mode
-        var symbol: NSImage?
-        if texts.isEmpty, let symbolName = glyph.symbolName {
-            symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: glyph.rawValue)?
-                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
-        }
-
-        let textWidth = texts.map { $0.0.size().width + ($0.1.x - iconSide) }.max() ?? -gap
-        let symbolWidth = symbol.map { symbolGap + $0.size.width } ?? 0
-        let width = ceil(iconSide + max(textWidth, 0) + symbolWidth + (texts.isEmpty ? 0 : 1))
+        let textBlockWidth = texts.map { $0.0.size().width + gap }.max() ?? 0
+        let width = ceil(symbolLeading + iconSide + textBlockWidth + (texts.isEmpty ? 0 : 1))
 
         let scale: CGFloat = 2
         guard let rep = NSBitmapImageRep(
@@ -285,7 +288,7 @@ enum MenuBarLabelRenderer {
             transform.scale(by: scale)
             transform.concat()
 
-            // Transport glyph leads, icon follows: [symbol][gap][icon]
+            // Transport glyph leads, icon follows: [symbol][gap][icon][text]
             if let symbol {
                 let symbolSize = symbol.size
                 symbol.draw(in: NSRect(
@@ -295,7 +298,6 @@ enum MenuBarLabelRenderer {
                     height: symbolSize.height
                 ))
             }
-            let iconX = symbol.map { $0.size.width + symbolGap } ?? 0
             if let icon = NSImage(named: "MenuBarIcon") {
                 icon.draw(in: NSRect(x: iconX, y: (height - iconSide) / 2, width: iconSide, height: iconSide))
             }

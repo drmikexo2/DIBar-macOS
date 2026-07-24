@@ -46,8 +46,11 @@ final class AppState {
     var errorMessage: String?
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
-    // Menu bar text components (icon-only when all off). "Site" in the UI,
-    // Network in code.
+    // Menu bar label components. "Site" in the UI, Network in code.
+    // Play/pause glyph defaults ON; the text components default OFF.
+    var menuBarShowPlayState: Bool = Prefs.read(key: "menubar_show_playstate") != "0" {
+        didSet { Prefs.save(key: "menubar_show_playstate", value: menuBarShowPlayState ? "1" : "0") }
+    }
     var menuBarShowSite: Bool = Prefs.read(key: "menubar_show_site") == "1" {
         didSet { Prefs.save(key: "menubar_show_site", value: menuBarShowSite ? "1" : "0") }
     }
