@@ -143,7 +143,7 @@ final class AppState {
         if audioPlayer.isPlaying, let track = audioPlayer.currentTrack {
             return composedLine2(artist: track.artist, song: track.title)
         }
-        return composedLine2(artist: "Miles Davis", song: "So What")
+        return composedLine2(artist: "Metallica", song: "So What")
     }
 
     private func composedLine1(site: String?, station: String?) -> String? {
