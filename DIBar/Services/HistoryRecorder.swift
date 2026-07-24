@@ -66,6 +66,29 @@ final class HistoryRecorder {
         store = nil
     }
 
+    // MARK: - Song votes (explicit user actions; recorded regardless of the
+    // listening-history toggle)
+
+    func vote(forTrackId trackId: Int) -> Int? {
+        store?.vote(forTrackId: trackId)
+    }
+
+    func recordVote(trackId: Int, vote: Int, artist: String, title: String, network: String, channelId: Int, channelName: String) {
+        store?.setVote(
+            trackId: trackId, vote: vote, artist: artist, title: title,
+            network: network, channelId: channelId, channelName: channelName,
+            at: Date(), synced: false
+        )
+    }
+
+    func markVoteSynced(trackId: Int) {
+        store?.markVoteSynced(trackId: trackId)
+    }
+
+    func clearVote(trackId: Int) {
+        store?.clearVote(trackId: trackId)
+    }
+
     // MARK: - Tick
 
     private func tick() {

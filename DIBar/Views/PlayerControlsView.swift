@@ -182,6 +182,7 @@ extension View {
 // MARK: - Track Meta Row
 
 struct TrackMetaRow: View {
+    @Environment(AppState.self) private var appState
     let track: NowPlaying
     @State private var now = Date()
 
@@ -189,8 +190,34 @@ struct TrackMetaRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            // Votes
-            if track.upVotes > 0 || track.downVotes > 0 {
+            // Votes — interactive when the track is identified
+            if track.trackId != nil {
+                let myVote = appState.currentTrackVote
+
+                Button(action: { appState.voteCurrentTrack(up: true) }) {
+                    HStack(spacing: 2) {
+                        Image(systemName: myVote == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        Text("\(track.upVotes)")
+                    }
+                    .foregroundStyle(.green.opacity(myVote == 1 ? 1.0 : 0.7))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .cursor(.pointingHand)
+                .help(myVote == 1 ? "Remove your like" : "Like this song")
+
+                Button(action: { appState.voteCurrentTrack(up: false) }) {
+                    HStack(spacing: 2) {
+                        Image(systemName: myVote == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                        Text("\(track.downVotes)")
+                    }
+                    .foregroundStyle(.red.opacity(myVote == -1 ? 0.9 : 0.55))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .cursor(.pointingHand)
+                .help(myVote == -1 ? "Remove your dislike" : "Dislike this song")
+            } else if track.upVotes > 0 || track.downVotes > 0 {
                 HStack(spacing: 2) {
                     Image(systemName: "hand.thumbsup.fill")
                     Text("\(track.upVotes)")
@@ -221,6 +248,10 @@ struct TrackMetaRow: View {
         }
         .font(.system(size: 10))
         .onReceive(timer) { now = $0 }
+        .onAppear { appState.refreshCurrentTrackVote() }
+        .onChange(of: track.trackId) { _, _ in
+            appState.refreshCurrentTrackVote()
+        }
     }
 
     private var elapsedSeconds: Int? {

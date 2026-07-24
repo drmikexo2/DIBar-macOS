@@ -40,7 +40,7 @@ final class HistoryStore {
         let setup = """
         PRAGMA journal_mode = WAL;
         PRAGMA synchronous = NORMAL;
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
         CREATE TABLE IF NOT EXISTS listen_segments (
             id INTEGER PRIMARY KEY,
             started_at REAL NOT NULL,
@@ -58,6 +58,17 @@ final class HistoryStore {
         CREATE INDEX IF NOT EXISTS idx_segments_started ON listen_segments(started_at);
         CREATE INDEX IF NOT EXISTS idx_segments_net_started ON listen_segments(network, started_at);
         CREATE INDEX IF NOT EXISTS idx_segments_artist_title ON listen_segments(artist, title);
+        CREATE TABLE IF NOT EXISTS song_votes (
+            track_id INTEGER PRIMARY KEY,
+            vote INTEGER NOT NULL,
+            artist TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            network TEXT NOT NULL,
+            channel_id INTEGER NOT NULL,
+            channel_name TEXT NOT NULL,
+            voted_at REAL NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0
+        );
         """
         guard exec(setup) else {
             sqlite3_close(db)
@@ -170,6 +181,68 @@ final class HistoryStore {
         sqlite3_bind_double(stmt, 1, since.timeIntervalSince1970)
         guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
         return sqlite3_column_double(stmt, 0)
+    }
+
+    // MARK: - Song votes
+
+    func setVote(
+        trackId: Int,
+        vote: Int,
+        artist: String,
+        title: String,
+        network: String,
+        channelId: Int,
+        channelName: String,
+        at date: Date,
+        synced: Bool
+    ) {
+        let sql = """
+        INSERT INTO song_votes (track_id, vote, artist, title, network, channel_id, channel_name, voted_at, synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(track_id) DO UPDATE SET
+            vote = excluded.vote, artist = excluded.artist, title = excluded.title,
+            network = excluded.network, channel_id = excluded.channel_id,
+            channel_name = excluded.channel_name, voted_at = excluded.voted_at,
+            synced = excluded.synced;
+        """
+        var stmt: OpaquePointer?
+        guard prepare(sql, &stmt) else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(trackId))
+        sqlite3_bind_int64(stmt, 2, Int64(vote))
+        sqlite3_bind_text(stmt, 3, artist, -1, sqliteTransient)
+        sqlite3_bind_text(stmt, 4, title, -1, sqliteTransient)
+        sqlite3_bind_text(stmt, 5, network, -1, sqliteTransient)
+        sqlite3_bind_int64(stmt, 6, Int64(channelId))
+        sqlite3_bind_text(stmt, 7, channelName, -1, sqliteTransient)
+        sqlite3_bind_double(stmt, 8, date.timeIntervalSince1970)
+        sqlite3_bind_int64(stmt, 9, synced ? 1 : 0)
+        _ = step(stmt)
+    }
+
+    func clearVote(trackId: Int) {
+        var stmt: OpaquePointer?
+        guard prepare("DELETE FROM song_votes WHERE track_id = ?;", &stmt) else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(trackId))
+        _ = step(stmt)
+    }
+
+    func vote(forTrackId trackId: Int) -> Int? {
+        var stmt: OpaquePointer?
+        guard prepare("SELECT vote FROM song_votes WHERE track_id = ?;", &stmt) else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(trackId))
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int64(stmt, 0))
+    }
+
+    func markVoteSynced(trackId: Int) {
+        var stmt: OpaquePointer?
+        guard prepare("UPDATE song_votes SET synced = 1 WHERE track_id = ?;", &stmt) else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(trackId))
+        _ = step(stmt)
     }
 
     func checkpointAndClose() {

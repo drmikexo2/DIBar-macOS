@@ -171,6 +171,46 @@ enum DIClient {
         return channelIds
     }
 
+    // MARK: - Voting
+
+    /// Cast an up/down vote on a track (shape verified against the live API:
+    /// POST /tracks/{id}/vote/{channel}/up|down bumps the community count).
+    static func castVote(trackId: Int, channelId: Int, up: Bool, apiKey: String, network: Network) async throws {
+        try await voteRequest(
+            method: "POST",
+            path: "tracks/\(trackId)/vote/\(channelId)/\(up ? "up" : "down")",
+            apiKey: apiKey,
+            network: network
+        )
+    }
+
+    static func removeVote(trackId: Int, channelId: Int, apiKey: String, network: Network) async throws {
+        try await voteRequest(
+            method: "DELETE",
+            path: "tracks/\(trackId)/vote/\(channelId)",
+            apiKey: apiKey,
+            network: network
+        )
+    }
+
+    private static func voteRequest(method: String, path: String, apiKey: String, network: Network) async throws {
+        let urlStr = "\(network.apiBaseURL)/\(path)?api_key=\(urlEncode(apiKey))"
+        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let http = response as? HTTPURLResponse
+
+        log.info("vote(\(network.rawValue)): \(method, privacy: .public) \(path, privacy: .public) HTTP \(http?.statusCode ?? 0)")
+
+        guard let http, (200...299).contains(http.statusCode) else {
+            throw DIClientError.httpError(http?.statusCode ?? 0)
+        }
+    }
+
     // MARK: - Track History (Now Playing)
 
     static func fetchCurrentTrack(channelId: Int, network: Network) async throws -> TrackHistoryItem? {

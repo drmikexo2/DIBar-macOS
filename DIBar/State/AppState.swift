@@ -536,6 +536,56 @@ final class AppState {
         audioPlayer.play(channel: channel, streamURL: url, network: selectedNetwork)
     }
 
+    // MARK: - Song Votes
+
+    /// The user's local vote on the current track (+1 / -1), nil when unvoted.
+    var currentTrackVote: Int?
+
+    func refreshCurrentTrackVote() {
+        guard let trackId = audioPlayer.currentTrack?.trackId else {
+            currentTrackVote = nil
+            return
+        }
+        currentTrackVote = historyRecorder.vote(forTrackId: trackId)
+    }
+
+    func voteCurrentTrack(up: Bool) {
+        guard let track = audioPlayer.currentTrack,
+              let trackId = track.trackId,
+              let channel = audioPlayer.currentChannel,
+              let network = audioPlayer.currentNetwork
+        else { return }
+
+        let newVote = up ? 1 : -1
+        if historyRecorder.vote(forTrackId: trackId) == newVote {
+            // Tapping the same thumb again removes the vote
+            historyRecorder.clearVote(trackId: trackId)
+            currentTrackVote = nil
+            if let ak = apiKey {
+                Task {
+                    try? await DIClient.removeVote(trackId: trackId, channelId: channel.id, apiKey: ak, network: network)
+                }
+            }
+        } else {
+            historyRecorder.recordVote(
+                trackId: trackId, vote: newVote,
+                artist: track.artist, title: track.title,
+                network: network.rawValue, channelId: channel.id, channelName: channel.name
+            )
+            currentTrackVote = newVote
+            if let ak = apiKey {
+                Task {
+                    do {
+                        try await DIClient.castVote(trackId: trackId, channelId: channel.id, up: up, apiKey: ak, network: network)
+                        historyRecorder.markVoteSynced(trackId: trackId)
+                    } catch {
+                        log.error("vote sync failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+
     func restartStreamForQualityChange() {
         guard audioPlayer.isPlaying,
               let channel = audioPlayer.currentChannel,
