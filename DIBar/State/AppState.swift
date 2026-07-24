@@ -45,6 +45,12 @@ final class AppState {
     var isLoading: Bool = false
     var errorMessage: String?
     var subscriptionRequiredNetwork: Network?
+    var searchFieldFocused: Bool = false
+    var showTrackInMenuBar: Bool = KeychainHelper.read(key: "show_track_in_menu_bar") == "1" {
+        didSet {
+            KeychainHelper.save(key: "show_track_in_menu_bar", value: showTrackInMenuBar ? "1" : "0")
+        }
+    }
 
     // Favorites sync — flips false on a definitive 404/405 from the write
     // endpoint, after which stars still work but only locally.
@@ -87,6 +93,14 @@ final class AppState {
 
     /// True once we have real subscription data to gate against.
     var knowsSubscriptions: Bool { !subscriptions.isEmpty }
+
+    /// Truncated "artist — title" for the menu bar, nil when idle or empty.
+    var menuBarTrackText: String? {
+        guard audioPlayer.isPlaying, let track = audioPlayer.currentTrack else { return nil }
+        let text = track.displayText
+        guard !text.isEmpty, text != "Loading..." else { return nil }
+        return text.count > 30 ? String(text.prefix(29)) + "…" : text
+    }
 
     func subscription(for network: Network) -> MembershipSubscription? {
         subscriptions.first { sub in

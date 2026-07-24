@@ -25,6 +25,17 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
 
+            HStack {
+                Text("Show track in menu bar")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("", isOn: Bindable(appState).showTrackInMenuBar)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .padding(.horizontal, 16)
+
             Divider()
 
             Button {

@@ -15,8 +15,16 @@ struct DIBarApp: App {
                     setupDebugNotifications()
                 }
         } label: {
-            Image("MenuBarIcon")
-                .renderingMode(.template)
+            HStack(spacing: 3) {
+                Image("MenuBarIcon")
+                    .renderingMode(.template)
+                if appState.showTrackInMenuBar, let title = appState.menuBarTrackText {
+                    Text(title)
+                } else if appState.audioPlayer.isPlaying {
+                    Image(systemName: "play.fill")
+                        .imageScale(.small)
+                }
+            }
         }
         .menuBarExtraStyle(.window)
     }

@@ -3,6 +3,8 @@ import SwiftUI
 struct StationListView: View {
     @Environment(AppState.self) private var appState
     @State private var allStationsExpanded = KeychainHelper.read(key: "all_stations_expanded") != "0"
+    @State private var highlightedIndex: Int?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,6 +21,27 @@ struct StationListView: View {
                 TextField("Search stations...", text: Bindable(appState).searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
+                    .focused($searchFocused)
+                    .onKeyPress(.downArrow) {
+                        moveHighlight(by: 1)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        moveHighlight(by: -1)
+                        return .handled
+                    }
+                    .onSubmit {
+                        let channels = appState.filteredChannels
+                        let index = highlightedIndex ?? (appState.searchText.isEmpty ? nil : 0)
+                        if let index, channels.indices.contains(index) {
+                            appState.playChannel(channels[index])
+                        }
+                    }
+                    .onExitCommand {
+                        appState.searchText = ""
+                        highlightedIndex = nil
+                        searchFocused = false
+                    }
                 if !appState.searchText.isEmpty {
                     Button(action: { appState.searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
@@ -74,8 +97,8 @@ struct StationListView: View {
                             }
 
                             if !showSections || allStationsExpanded {
-                                ForEach(appState.filteredChannels) { channel in
-                                    ChannelRow(channel: channel)
+                                ForEach(Array(appState.filteredChannels.enumerated()), id: \.element.id) { index, channel in
+                                    ChannelRow(channel: channel, isHighlighted: index == highlightedIndex)
                                         .id("all-\(channel.id)")
                                 }
                             }
@@ -83,9 +106,15 @@ struct StationListView: View {
                     }
                     .frame(height: 280)
                     .onAppear {
+                        searchFocused = true
                         if let playingId = appState.audioPlayer.currentChannel?.id,
                            appState.playingNetwork == appState.selectedNetwork {
                             proxy.scrollTo("all-\(playingId)", anchor: .center)
+                        }
+                    }
+                    .onChange(of: highlightedIndex) { _, index in
+                        if let index, appState.filteredChannels.indices.contains(index) {
+                            proxy.scrollTo("all-\(appState.filteredChannels[index].id)", anchor: .center)
                         }
                     }
                 }
@@ -94,6 +123,21 @@ struct StationListView: View {
         .onChange(of: allStationsExpanded) { _, expanded in
             KeychainHelper.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
         }
+        .onChange(of: appState.searchText) { _, _ in
+            highlightedIndex = nil
+        }
+        .onChange(of: searchFocused) { _, focused in
+            appState.searchFieldFocused = focused
+        }
+    }
+
+    private func moveHighlight(by delta: Int) {
+        let count = appState.filteredChannels.count
+        guard count > 0 else { return }
+        // Arrow keys navigate the All Stations list, so make sure it's visible
+        if !allStationsExpanded { allStationsExpanded = true }
+        let current = highlightedIndex ?? -1
+        highlightedIndex = min(max(current + delta, 0), count - 1)
     }
 
     private var favoritesFailedRow: some View {
@@ -118,6 +162,7 @@ struct StationListView: View {
 struct ChannelRow: View {
     @Environment(AppState.self) private var appState
     let channel: Channel
+    var isHighlighted: Bool = false
     @State private var isHovered = false
 
     private var isPlaying: Bool {
@@ -164,7 +209,7 @@ struct ChannelRow: View {
         .background(
             isPlaying
                 ? Color.accentColor.opacity(0.1)
-                : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                : (isHighlighted || isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
     }

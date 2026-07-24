@@ -32,12 +32,15 @@ struct PlayerControlsView: View {
             }
 
             HStack(spacing: 12) {
-                Button(action: { appState.togglePlayPause() }) {
-                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                Group {
+                    // Space toggles playback unless the user is typing in search
+                    if appState.searchFieldFocused {
+                        playPauseButton
+                    } else {
+                        playPauseButton
+                            .keyboardShortcut(.space, modifiers: [])
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(player.currentChannel == nil)
 
                 Image(systemName: "speaker.fill")
                     .font(.caption2)
@@ -71,6 +74,15 @@ struct PlayerControlsView: View {
             }
         }
         #endif
+    }
+
+    private var playPauseButton: some View {
+        Button(action: { appState.togglePlayPause() }) {
+            Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                .font(.system(size: 28))
+        }
+        .buttonStyle(.plain)
+        .disabled(player.currentChannel == nil)
     }
 
     private var collapsedArtwork: some View {
