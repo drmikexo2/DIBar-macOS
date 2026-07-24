@@ -284,20 +284,22 @@ enum MenuBarLabelRenderer {
             transform.scale(by: scale)
             transform.concat()
 
-            if let icon = NSImage(named: "MenuBarIcon") {
-                icon.draw(in: NSRect(x: 0, y: (height - iconSide) / 2, width: iconSide, height: iconSide))
-            }
-            for (text, point) in texts {
-                text.draw(at: point)
-            }
+            // Transport glyph leads, icon follows: [symbol][gap][icon]
             if let symbol {
                 let symbolSize = symbol.size
                 symbol.draw(in: NSRect(
-                    x: iconSide + gap,
+                    x: 0,
                     y: (height - symbolSize.height) / 2,
                     width: symbolSize.width,
                     height: symbolSize.height
                 ))
+            }
+            let iconX = symbol.map { $0.size.width + gap } ?? 0
+            if let icon = NSImage(named: "MenuBarIcon") {
+                icon.draw(in: NSRect(x: iconX, y: (height - iconSide) / 2, width: iconSide, height: iconSide))
+            }
+            for (text, point) in texts {
+                text.draw(at: point)
             }
             context.flushGraphics()
         }
