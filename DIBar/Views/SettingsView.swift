@@ -136,6 +136,7 @@ struct SettingsView: View {
 private struct ToggleChip: View {
     let title: String
     @Binding var isOn: Bool
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: { isOn.toggle() }) {
@@ -148,8 +149,15 @@ private struct ToggleChip: View {
                     isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
                     in: Capsule()
                 )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.accentColor.opacity(isHovered ? 0.9 : 0), lineWidth: 1.5)
+                )
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .cursor(.pointingHand)
+        .help(isOn ? "Hide \(title.lowercased()) in the menu bar" : "Show \(title.lowercased()) in the menu bar")
     }
 }
