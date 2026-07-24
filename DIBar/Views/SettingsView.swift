@@ -7,42 +7,29 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Text("Quality")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
+        VStack(spacing: 2) {
+            settingsRow("Quality") {
                 Picker("", selection: Bindable(appState).selectedQuality) {
                     ForEach(StreamQuality.allCases) { quality in
                         Text(quality.displayName).tag(quality)
                     }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 130)
+                .labelsHidden()
+                .fixedSize()
                 .onChange(of: appState.selectedQuality) { _, newValue in
                     Prefs.save(key: "quality", value: newValue.rawValue)
                     appState.restartStreamForQualityChange()
                 }
             }
-            .padding(.horizontal, 16)
 
-            HStack {
-                Text("Show track in menu bar")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
+            settingsRow("Show track in menu bar") {
                 Toggle("", isOn: Bindable(appState).showTrackInMenuBar)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
             }
-            .padding(.horizontal, 16)
 
-            HStack {
-                Text("Launch at login")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
+            settingsRow("Launch at login") {
                 Toggle("", isOn: $launchAtLogin)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
@@ -59,7 +46,6 @@ struct SettingsView: View {
                         }
                     }
             }
-            .padding(.horizontal, 16)
 
             Divider()
 
@@ -111,5 +97,18 @@ struct SettingsView: View {
             .padding(.top, 4)
         }
         .padding(.top, 6)
+    }
+
+    /// Caption on the left, control flush right, uniform height and padding.
+    private func settingsRow(_ caption: String, @ViewBuilder control: () -> some View) -> some View {
+        HStack {
+            Text(caption)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            control()
+        }
+        .frame(minHeight: 24)
+        .padding(.horizontal, 16)
     }
 }

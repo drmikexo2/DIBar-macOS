@@ -56,6 +56,10 @@ final class AppState {
     // endpoint, after which stars still work but only locally.
     var favoritesSyncAvailable: Bool = true
 
+    // Stations unfavorited this session stay visible in the Favorites section
+    // (with an outline star) so they're easy to re-favorite. Resets on relaunch.
+    private var sessionUnfavorited: [Network: Set<Int>] = [:]
+
     // MARK: - Computed
 
     var channels: [Channel] {
@@ -71,8 +75,9 @@ final class AppState {
     }
 
     var favoriteChannels: [Channel] {
-        channels
-            .filter { favoriteChannelIds.contains($0.id) }
+        let visible = favoriteChannelIds.union(sessionUnfavorited[selectedNetwork] ?? [])
+        return channels
+            .filter { visible.contains($0.id) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -259,6 +264,7 @@ final class AppState {
         subscriptions = []
         isLoggedIn = false
         networkDataCache = [:]
+        sessionUnfavorited = [:]
         playingNetwork = nil
         selectedNetwork = .di
         searchText = ""
@@ -343,8 +349,10 @@ final class AppState {
         let adding = !data.favoriteChannelIds.contains(channel.id)
         if adding {
             data.favoriteChannelIds.insert(channel.id)
+            sessionUnfavorited[network]?.remove(channel.id)
         } else {
             data.favoriteChannelIds.remove(channel.id)
+            sessionUnfavorited[network, default: []].insert(channel.id)
         }
         networkDataCache[network] = data
         log.info("toggleFavorite(\(network.rawValue)): \(adding ? "add" : "remove") \(channel.name)")

@@ -176,32 +176,46 @@ struct ChannelRow: View {
 
     var body: some View {
         Button(action: { appState.playChannel(channel) }) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Text(channel.name)
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
                     .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
                 Spacer()
-                if isFavorite || isHovered {
-                    Button(action: { appState.toggleFavorite(channel) }) {
-                        Image(systemName: isFavorite ? "star.fill" : "star")
+
+                // Fixed-width slots keep the star column aligned on every row
+                Group {
+                    if isPlaying && appState.audioPlayer.isPlaying {
+                        Image(systemName: "speaker.wave.2.fill")
                             .font(.caption2)
-                            .foregroundStyle(isFavorite ? AnyShapeStyle(.yellow.opacity(0.65)) : AnyShapeStyle(.secondary))
+                            .foregroundStyle(.blue)
+                    } else if isPlaying {
+                        Image(systemName: "speaker.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Color.clear
                     }
-                    .buttonStyle(.plain)
-                    .help(isFavorite ? "Remove from favorites" : "Add to favorites")
                 }
-                if isPlaying && appState.audioPlayer.isPlaying {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
-                } else if isPlaying {
-                    Image(systemName: "speaker.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                .frame(width: 16, height: 14)
+
+                Group {
+                    if isFavorite || isHovered {
+                        Button(action: { appState.toggleFavorite(channel) }) {
+                            Image(systemName: isFavorite ? "star.fill" : "star")
+                                .font(.caption2)
+                                .foregroundStyle(isFavorite ? AnyShapeStyle(.yellow.opacity(0.65)) : AnyShapeStyle(.secondary))
+                        }
+                        .buttonStyle(.plain)
+                        .help(isFavorite ? "Remove from favorites" : "Add to favorites")
+                    } else {
+                        Color.clear
+                    }
                 }
+                .frame(width: 16, height: 14)
             }
-            .padding(.horizontal, 16)
+            .padding(.leading, 16)
+            .padding(.trailing, 18)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
         }

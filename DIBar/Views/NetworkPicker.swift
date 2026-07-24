@@ -13,19 +13,16 @@ struct NetworkPicker: View {
                         Image(systemName: "checkmark")
                     }
                     Text(network.displayName)
+                    if appState.playingNetwork == network, appState.audioPlayer.currentChannel != nil {
+                        Image(systemName: "speaker.wave.2.fill")
+                    }
                 }
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(appState.selectedNetwork.displayName)
-                    .font(.system(size: 11, weight: .semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
+            Text(appState.selectedNetwork.displayName)
+                .font(.system(size: 11, weight: .semibold))
         }
         .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
         .fixedSize()
         .help("Switch radio network")
     }

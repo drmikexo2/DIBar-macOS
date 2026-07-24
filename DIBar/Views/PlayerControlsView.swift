@@ -142,19 +142,21 @@ struct PlayerControlsView: View {
         }
     }
 
-    /// Channel name, prefixed with the network when the user is browsing a
-    /// different network than the one playing; tap jumps back to it.
+    /// "Network · Channel"; when browsing a different network than the one
+    /// playing, tapping it jumps back to the playing network's station list.
     @ViewBuilder
     private func channelLine(track: NowPlaying) -> some View {
-        if let network = player.currentNetwork, network != appState.selectedNetwork {
-            Text("\(network.displayName) · \(track.channelName)")
+        let network = player.currentNetwork
+        let label = network.map { "\($0.displayName) · \(track.channelName)" } ?? track.channelName
+        if let network, network != appState.selectedNetwork {
+            Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
                 .onTapGesture { appState.selectNetwork(network) }
                 .cursor(.pointingHand)
                 .help("Show \(network.displayName) stations")
         } else {
-            Text(track.channelName)
+            Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
         }
