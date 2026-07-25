@@ -24,7 +24,7 @@ struct OutputDevicePicker: View {
         .cursor(.pointingHand)
         .help("Output device")
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 0) {
+            DropdownContainer(width: 230) {
                 DeviceRow(label: "System Default", isSelected: appState.outputDeviceUID == nil) {
                     appState.setOutputDevice(uid: nil)
                     isOpen = false
@@ -50,8 +50,6 @@ struct OutputDevicePicker: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 3)
             }
-            .padding(.vertical, 4)
-            .frame(width: 230)
         }
     }
 }
@@ -60,33 +58,15 @@ private struct DeviceRow: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void
-    @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Group {
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 16, height: 14)
-
-                Text(label)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+        DropdownRow(action: action) {
+            DropdownCheckmark(isVisible: isSelected)
+            Text(label)
+                .font(.system(size: 12))
+                .lineLimit(1)
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
-        .onHover { isHovered = $0 }
     }
 }
 

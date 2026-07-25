@@ -230,20 +230,7 @@ struct ChannelRow: View {
                 Spacer()
 
                 // Fixed-width slots keep the star column aligned on every row
-                Group {
-                    if isPlaying && appState.audioPlayer.isPlaying {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    } else if isPlaying {
-                        Image(systemName: "speaker.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 16, height: 14)
+                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isPlaying)
 
                 Group {
                     if isFavorite || isHovered {
@@ -303,20 +290,7 @@ struct RecentRow: View {
                 }
                 Spacer()
 
-                Group {
-                    if isPlaying && appState.audioPlayer.isPlaying {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    } else if isPlaying {
-                        Image(systemName: "speaker.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 16, height: 14)
+                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isPlaying)
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)

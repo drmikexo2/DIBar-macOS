@@ -31,7 +31,7 @@ enum SongAction: CaseIterable, Identifiable {
         let query = artist.isEmpty ? title : "\(artist) \(title)"
         switch self {
         case .copy:
-            let line = artist.isEmpty ? title : "\(artist) – \(title)"
+            let line = TrackDisplay.artistTitle(artist, title)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(line, forType: .string)
         case .spotify:
@@ -203,25 +203,16 @@ private struct SongActionRow: View {
     let label: String
     let systemImage: String
     let action: () -> Void
-    @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 14)
-                Text(label)
-                    .font(.system(size: 12))
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+        DropdownRow(spacing: 6, action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            Text(label)
+                .font(.system(size: 12))
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
-        .onHover { isHovered = $0 }
     }
 }

@@ -37,6 +37,7 @@
 		A10000010000000000000021 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000021 /* Secrets.swift */; };
 		A10000010000000000000020 /* TrackMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* TrackMatching.swift */; };
 		A10000010000000000000022 /* ArtCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ArtCache.swift */; };
+		A10000010000000000000027 /* DropdownUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000027 /* DropdownUI.swift */; };
 		A10000010000000000000023 /* TrackMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* TrackMatchingTests.swift */; };
 		A10000010000000000000024 /* HistoryMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000024 /* HistoryMergingTests.swift */; };
 		A10000010000000000000025 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ModelsTests.swift */; };
@@ -77,6 +78,7 @@
 		A20000010000000000000021 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* TrackMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatching.swift; sourceTree = "<group>"; };
 		A20000010000000000000022 /* ArtCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtCache.swift; sourceTree = "<group>"; };
+		A20000010000000000000027 /* DropdownUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropdownUI.swift; sourceTree = "<group>"; };
 		A20000010000000000000023 /* TrackMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatchingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000024 /* HistoryMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMergingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000025 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
@@ -189,6 +191,7 @@
 				A20000010000000000000018 /* SleepTimerView.swift */,
 				A20000010000000000000019 /* SongActionsMenu.swift */,
 				A2000001000000000000001D /* OutputDevicePicker.swift */,
+				A20000010000000000000027 /* DropdownUI.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -331,6 +334,7 @@
 				A10000010000000000000021 /* Secrets.swift in Sources */,
 				A10000010000000000000020 /* TrackMatching.swift in Sources */,
 				A10000010000000000000022 /* ArtCache.swift in Sources */,
+				A10000010000000000000027 /* DropdownUI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

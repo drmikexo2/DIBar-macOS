@@ -24,7 +24,7 @@ struct NetworkPicker: View {
         .buttonStyle(.plain)
         .help("Switch site")
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 0) {
+            DropdownContainer(width: 200) {
                 ForEach(Network.allCases) { network in
                     NetworkRow(network: network) {
                         appState.selectNetwork(network)
@@ -32,8 +32,6 @@ struct NetworkPicker: View {
                     }
                 }
             }
-            .padding(.vertical, 4)
-            .frame(width: 200)
         }
     }
 }
@@ -42,53 +40,23 @@ private struct NetworkRow: View {
     @Environment(AppState.self) private var appState
     let network: Network
     let action: () -> Void
-    @State private var isHovered = false
-
-    private var isSelected: Bool {
-        network == appState.selectedNetwork
-    }
 
     private var isPlaying: Bool {
         appState.playingNetwork == network && appState.audioPlayer.currentChannel != nil
     }
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Group {
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 16, height: 14)
+        DropdownRow(action: action) {
+            DropdownCheckmark(isVisible: network == appState.selectedNetwork)
 
-                Text(network.displayName)
-                    .font(.system(size: 12))
-                    .fontWeight(isPlaying ? .semibold : .regular)
-                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+            Text(network.displayName)
+                .font(.system(size: 12))
+                .fontWeight(isPlaying ? .semibold : .regular)
+                .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
 
-                Spacer()
+            Spacer()
 
-                Group {
-                    if isPlaying {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 16, height: 14)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+            SpeakerIndicator(isCurrent: isPlaying, isAudible: isPlaying)
         }
-        .buttonStyle(.plain)
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
-        .onHover { isHovered = $0 }
     }
 }

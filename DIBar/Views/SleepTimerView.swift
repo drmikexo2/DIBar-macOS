@@ -41,7 +41,7 @@ struct SleepTimerView: View {
     }
 
     private var popoverContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        DropdownContainer(width: 170) {
             if let endDate = appState.sleepTimerEndDate {
                 HStack {
                     CountdownText(endDate: endDate) { remaining in
@@ -90,8 +90,6 @@ struct SleepTimerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
         }
-        .padding(.vertical, 4)
-        .frame(width: 170)
     }
 
     private func startCustomTimer() {
@@ -121,22 +119,13 @@ private struct TimerRow: View {
     let label: String
     var tint: Color = .primary
     let action: () -> Void
-    @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(label)
-                    .font(.system(size: 12))
-                    .foregroundStyle(tint)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+        DropdownRow(action: action) {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(tint)
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
-        .onHover { isHovered = $0 }
     }
 }
