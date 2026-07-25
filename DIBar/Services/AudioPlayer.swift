@@ -810,12 +810,7 @@ final class AudioPlayer {
     }
 
     private func currentElapsedSeconds(now: Date = Date()) -> Int {
-        guard let track = currentTrack else { return 0 }
-        if let override = track.elapsedOverride {
-            return max(override, 0)
-        }
-        guard let startedAt = track.startedAt else { return 0 }
-        return max(Int(now.timeIntervalSince(startedAt)), 0)
+        currentTrack?.elapsedSeconds(at: now) ?? 0
     }
 
     private var apiTimeRemaining: Int? {

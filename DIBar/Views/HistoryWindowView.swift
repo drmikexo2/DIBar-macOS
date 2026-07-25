@@ -244,9 +244,7 @@ struct HistoryWindowView: View {
     // MARK: - Formatting
 
     private func songLine(artist: String, title: String) -> String {
-        if artist.isEmpty { return title }
-        if title.isEmpty { return artist }
-        return "\(artist) – \(title)"
+        TrackDisplay.artistTitle(artist, title)
     }
 
     private func siteName(_ raw: String) -> String {
@@ -261,8 +259,7 @@ struct HistoryWindowView: View {
     }
 
     private static func formatDuration(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        return String(format: "%d:%02d", total / 60, total % 60)
+        TrackDisplay.formatTime(Int(seconds))
     }
 
     private static let dateFormatter: DateFormatter = {

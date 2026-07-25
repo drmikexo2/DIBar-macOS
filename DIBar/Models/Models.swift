@@ -204,6 +204,22 @@ struct TrackHistoryItem: Codable {
     }
 }
 
+/// Shared display formatting for song metadata — the one place that decides
+/// how "Artist – Title" joins and how durations render.
+enum TrackDisplay {
+    /// "Artist – Title" (en dash), degrading to whichever side is present.
+    static func artistTitle(_ artist: String, _ title: String) -> String {
+        if artist.isEmpty { return title }
+        if title.isEmpty { return artist }
+        return "\(artist) – \(title)"
+    }
+
+    /// "m:ss"
+    static func formatTime(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
 struct NowPlaying: Equatable {
     let channelName: String
     let artist: String
@@ -218,21 +234,19 @@ struct NowPlaying: Equatable {
 
     var displayText: String {
         if artist.isEmpty && title.isEmpty { return channelName }
-        if artist.isEmpty { return title }
-        return "\(artist) — \(title)"
+        return TrackDisplay.artistTitle(artist, title)
     }
 
-    var timeRemaining: Int? {
-        guard let startedAt, duration > 0 else { return nil }
-        let elapsed = Int(Date().timeIntervalSince(startedAt))
-        let remaining = duration - elapsed
-        return remaining > 0 ? remaining : nil
+    /// Seconds into the track: the frozen override when the timing engine set
+    /// one, else wall clock since the anchored start.
+    func elapsedSeconds(at now: Date = Date()) -> Int? {
+        if let elapsedOverride { return max(elapsedOverride, 0) }
+        guard let startedAt else { return nil }
+        return max(Int(now.timeIntervalSince(startedAt)), 0)
     }
 
     static func formatTime(_ seconds: Int) -> String {
-        let m = seconds / 60
-        let s = seconds % 60
-        return String(format: "%d:%02d", m, s)
+        TrackDisplay.formatTime(seconds)
     }
 }
 

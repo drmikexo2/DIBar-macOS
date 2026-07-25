@@ -172,9 +172,7 @@ final class TrackNotifier: NSObject {
         let content = UNMutableNotificationContent()
         content.title = "\(network.displayName) · \(channel.name)"
         if let parts = realTrackParts {
-            content.subtitle = [parts.artist, parts.title]
-                .filter { !$0.isEmpty }
-                .joined(separator: " – ")
+            content.subtitle = TrackDisplay.artistTitle(parts.artist, parts.title)
         }
         content.sound = nil
         if let attachment = await artworkAttachment() {

@@ -298,10 +298,6 @@ struct TrackMetaRow: View {
     }
 
     private func elapsedSeconds(at now: Date) -> Int? {
-        if let override = track.elapsedOverride {
-            return max(override, 0)
-        }
-        guard let startedAt = track.startedAt else { return nil }
-        return max(Int(now.timeIntervalSince(startedAt)), 0)
+        track.elapsedSeconds(at: now)
     }
 }
