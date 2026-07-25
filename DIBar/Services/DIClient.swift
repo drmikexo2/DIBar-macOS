@@ -246,11 +246,6 @@ enum DIClient {
         return string.addingPercentEncoding(withAllowedCharacters: allowed) ?? string
     }
 
-    private static func extractTopLevelKeys(from data: Data) -> [String] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
-        return Array(json.keys).sorted()
-    }
-
     private static func authenticateMember(body: String, network: Network) async throws -> AuthResponse {
         guard let url = URL(string: "\(network.apiBaseURL)/members/authenticate") else {
             throw DIClientError.invalidURL
@@ -269,10 +264,6 @@ enum DIClient {
         }
 
         log.info("auth: HTTP \(http.statusCode)")
-        log.info("auth raw keys: \(extractTopLevelKeys(from: data))")
-        if let raw = String(data: data, encoding: .utf8) {
-            log.info("auth raw (500): \(raw.prefix(500))")
-        }
 
         if http.statusCode == 403 || http.statusCode == 401 {
             throw DIClientError.authFailed
