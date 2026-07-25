@@ -24,6 +24,52 @@ enum DIClientError: LocalizedError {
 enum DIClient {
     private static let basicAuth = "Basic ZXBoZW1lcm9uOmRheWVpcGgwbmVAcHA="
 
+    // MARK: - Request plumbing
+
+    /// Build and run an authorized request, returning the body and status.
+    private static func performRaw(
+        _ urlString: String,
+        method: String = "GET",
+        contentType: String? = nil,
+        body: Data? = nil,
+        cachePolicy: URLRequest.CachePolicy? = nil
+    ) async throws -> (data: Data, status: Int) {
+        guard let url = URL(string: urlString) else { throw DIClientError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
+        if let contentType {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+        request.httpBody = body
+        if let cachePolicy {
+            request.cachePolicy = cachePolicy
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw DIClientError.networkError(URLError(.badServerResponse))
+        }
+        return (data, http.statusCode)
+    }
+
+    /// performRaw + the standard non-2xx-throws policy.
+    private static func perform(
+        _ urlString: String,
+        method: String = "GET",
+        contentType: String? = nil,
+        body: Data? = nil,
+        cachePolicy: URLRequest.CachePolicy? = nil
+    ) async throws -> Data {
+        let (data, status) = try await performRaw(
+            urlString, method: method, contentType: contentType,
+            body: body, cachePolicy: cachePolicy
+        )
+        guard (200...299).contains(status) else {
+            throw DIClientError.httpError(status)
+        }
+        return data
+    }
+
     // MARK: - Authenticate
 
     static func authenticate(email: String, password: String) async throws -> AuthResponse {
@@ -38,22 +84,10 @@ enum DIClient {
 
     // MARK: - Fetch Channels
 
-    static func fetchChannels(listenKey: String, quality: StreamQuality, network: Network) async throws -> [Channel] {
-        guard let url = URL(string: "\(network.apiBaseURL)/channel_filters") else {
-            throw DIClientError.invalidURL
-        }
+    static func fetchChannels(network: Network) async throws -> [Channel] {
+        let data = try await perform("\(network.apiBaseURL)/channel_filters")
 
-        var request = URLRequest(url: url)
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw DIClientError.httpError(code)
-        }
-
-        log.info("channels(\(network.rawValue)): HTTP \(http.statusCode), \(data.count) bytes")
+        log.info("channels(\(network.rawValue)): \(data.count) bytes")
 
         do {
             let filters = try JSONDecoder().decode([ChannelFilter].self, from: data)
@@ -92,24 +126,10 @@ enum DIClient {
     }
 
     private static func favoritesData(apiKey: String, network: Network) async throws -> Data {
-        let urlStr = "\(network.apiBaseURL)/members/1/favorites/channels?api_key=\(urlEncode(apiKey))"
-        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
-
-        log.info("favorites(\(network.rawValue)): GET")
-
-        var request = URLRequest(url: url)
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = response as? HTTPURLResponse
-
-        log.info("favorites(\(network.rawValue)): HTTP \(http?.statusCode ?? 0), \(data.count) bytes")
-
-        guard let http, (200...299).contains(http.statusCode) else {
-            log.error("favorites(\(network.rawValue)): HTTP error \(http?.statusCode ?? 0)")
-            throw DIClientError.httpError(http?.statusCode ?? 0)
-        }
-
+        let data = try await perform(
+            "\(network.apiBaseURL)/members/1/favorites/channels?api_key=\(urlEncode(apiKey))"
+        )
+        log.info("favorites(\(network.rawValue)): \(data.count) bytes")
         return data
     }
 
@@ -117,24 +137,14 @@ enum DIClient {
     /// The endpoint has bulk-replace semantics (verified against the live API),
     /// so callers must GET-merge-POST rather than posting a single change.
     static func setFavorites(channelIds: [Int], memberId: Int, apiKey: String, network: Network) async throws {
-        let urlStr = "\(network.apiBaseURL)/members/\(memberId)/favorites/channels?api_key=\(urlEncode(apiKey))"
-        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let payload = ["favorites": channelIds.enumerated().map { ["channel_id": $1, "position": $0] }]
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        let http = response as? HTTPURLResponse
-
-        log.info("setFavorites(\(network.rawValue)): POST \(channelIds.count) favorites, HTTP \(http?.statusCode ?? 0)")
-
-        guard let http, (200...299).contains(http.statusCode) else {
-            throw DIClientError.httpError(http?.statusCode ?? 0)
-        }
+        _ = try await perform(
+            "\(network.apiBaseURL)/members/\(memberId)/favorites/channels?api_key=\(urlEncode(apiKey))",
+            method: "POST",
+            contentType: "application/json",
+            body: try JSONSerialization.data(withJSONObject: payload)
+        )
+        log.info("setFavorites(\(network.rawValue)): POST \(channelIds.count) favorites ok")
     }
 
     /// Walk any JSON structure and extract all "channel_id" integer values found
@@ -194,36 +204,20 @@ enum DIClient {
     }
 
     private static func voteRequest(method: String, path: String, apiKey: String, network: Network) async throws {
-        let urlStr = "\(network.apiBaseURL)/\(path)?api_key=\(urlEncode(apiKey))"
-        guard let url = URL(string: urlStr) else { throw DIClientError.invalidURL }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        let http = response as? HTTPURLResponse
-
-        log.info("vote(\(network.rawValue)): \(method, privacy: .public) \(path, privacy: .public) HTTP \(http?.statusCode ?? 0)")
-
-        guard let http, (200...299).contains(http.statusCode) else {
-            throw DIClientError.httpError(http?.statusCode ?? 0)
-        }
+        _ = try await perform(
+            "\(network.apiBaseURL)/\(path)?api_key=\(urlEncode(apiKey))",
+            method: method
+        )
+        log.info("vote(\(network.rawValue)): \(method, privacy: .public) \(path, privacy: .public) ok")
     }
 
     // MARK: - Track History (Now Playing)
 
     static func fetchCurrentTrack(channelId: Int, network: Network) async throws -> TrackHistoryItem? {
-        guard let url = URL(string: "\(network.apiBaseURL)/track_history/channel/\(channelId)") else {
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-
-        let (data, _) = try await URLSession.shared.data(for: request)
-
+        let data = try await perform(
+            "\(network.apiBaseURL)/track_history/channel/\(channelId)",
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
         let items = try? JSONDecoder().decode([TrackHistoryItem].self, from: data)
         return items?.first
     }
@@ -247,30 +241,21 @@ enum DIClient {
     }
 
     private static func authenticateMember(body: String, network: Network) async throws -> AuthResponse {
-        guard let url = URL(string: "\(network.apiBaseURL)/members/authenticate") else {
-            throw DIClientError.invalidURL
-        }
+        let (data, status) = try await performRaw(
+            "\(network.apiBaseURL)/members/authenticate",
+            method: "POST",
+            contentType: "application/x-www-form-urlencoded",
+            body: body.data(using: .utf8)
+        )
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(basicAuth, forHTTPHeaderField: "Authorization")
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body.data(using: .utf8)
+        log.info("auth: HTTP \(status)")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw DIClientError.networkError(URLError(.badServerResponse))
-        }
-
-        log.info("auth: HTTP \(http.statusCode)")
-
-        if http.statusCode == 403 || http.statusCode == 401 {
+        if status == 403 || status == 401 {
             throw DIClientError.authFailed
         }
 
-        guard (200...299).contains(http.statusCode) else {
-            throw DIClientError.httpError(http.statusCode)
+        guard (200...299).contains(status) else {
+            throw DIClientError.httpError(status)
         }
 
         do {
