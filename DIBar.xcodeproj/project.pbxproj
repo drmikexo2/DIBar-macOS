@@ -37,6 +37,10 @@
 		A10000010000000000000021 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000021 /* Secrets.swift */; };
 		A10000010000000000000020 /* TrackMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* TrackMatching.swift */; };
 		A10000010000000000000022 /* ArtCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000022 /* ArtCache.swift */; };
+		A10000010000000000000023 /* TrackMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* TrackMatchingTests.swift */; };
+		A10000010000000000000024 /* HistoryMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000024 /* HistoryMergingTests.swift */; };
+		A10000010000000000000025 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ModelsTests.swift */; };
+		A10000010000000000000026 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000026 /* HistoryStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -73,10 +77,22 @@
 		A20000010000000000000021 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		A20000010000000000000020 /* TrackMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatching.swift; sourceTree = "<group>"; };
 		A20000010000000000000022 /* ArtCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtCache.swift; sourceTree = "<group>"; };
+		A20000010000000000000023 /* TrackMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatchingTests.swift; sourceTree = "<group>"; };
+		A20000010000000000000024 /* HistoryMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMergingTests.swift; sourceTree = "<group>"; };
+		A20000010000000000000025 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		A20000010000000000000026 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
+		A2000001000000000000002E /* DIBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DIBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A30000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000010000000000000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -90,8 +106,20 @@
 			isa = PBXGroup;
 			children = (
 				A40000010000000000000002 /* DIBar */,
+				A40000010000000000000008 /* DIBarTests */,
 				A40000010000000000000007 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A40000010000000000000008 /* DIBarTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000023 /* TrackMatchingTests.swift */,
+				A20000010000000000000024 /* HistoryMergingTests.swift */,
+				A20000010000000000000025 /* ModelsTests.swift */,
+				A20000010000000000000026 /* HistoryStoreTests.swift */,
+			);
+			path = DIBarTests;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000002 /* DIBar */ = {
@@ -169,6 +197,7 @@
 			isa = PBXGroup;
 			children = (
 				A2000001000000000000000E /* DIBar.app */,
+				A2000001000000000000002E /* DIBarTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -192,6 +221,23 @@
 			productName = DIBar;
 			productReference = A2000001000000000000000E /* DIBar.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A50000010000000000000002 /* DIBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000010000000000000004 /* Build configuration list for PBXNativeTarget "DIBarTests" */;
+			buildPhases = (
+				A60000010000000000000003 /* Sources */,
+				A30000010000000000000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AD0000010000000000000001 /* PBXTargetDependency */,
+			);
+			name = DIBarTests;
+			productName = DIBarTests;
+			productReference = A2000001000000000000002E /* DIBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -217,9 +263,28 @@
 			projectRoot = "";
 			targets = (
 				A50000010000000000000001 /* DIBar */,
+				A50000010000000000000002 /* DIBarTests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXContainerItemProxy section */
+		AC0000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A80000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = DIBar;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		AD0000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* DIBar */;
+			targetProxy = AC0000010000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A60000010000000000000002 /* Resources */ = {
@@ -266,6 +331,17 @@
 				A10000010000000000000021 /* Secrets.swift in Sources */,
 				A10000010000000000000020 /* TrackMatching.swift in Sources */,
 				A10000010000000000000022 /* ArtCache.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000010000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000023 /* TrackMatchingTests.swift in Sources */,
+				A10000010000000000000024 /* HistoryMergingTests.swift in Sources */,
+				A10000010000000000000025 /* ModelsTests.swift in Sources */,
+				A10000010000000000000026 /* HistoryStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -385,6 +461,36 @@
 			};
 			name = Release;
 		};
+		A90000010000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FA2AMFV98N;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.di-fm-menubar.tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DIBar.app/Contents/MacOS/DIBar";
+			};
+			name = Debug;
+		};
+		A90000010000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FA2AMFV98N;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.di-fm-menubar.tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DIBar.app/Contents/MacOS/DIBar";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -402,6 +508,15 @@
 			buildConfigurations = (
 				A90000010000000000000003 /* Debug */,
 				A90000010000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000010000000000000004 /* Build configuration list for PBXNativeTarget "DIBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000010000000000000005 /* Debug */,
+				A90000010000000000000006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
