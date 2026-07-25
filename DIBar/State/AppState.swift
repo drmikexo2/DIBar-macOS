@@ -13,7 +13,9 @@ struct NetworkData {
 @Observable
 @MainActor
 final class AppState {
-    private var didBootstrap = false
+    // Internal (not private) so the topic extensions in AppState+*.swift can
+    // reach it; nothing outside AppState's files should touch it.
+    var didBootstrap = false
 
     // Auth
     var isLoggedIn: Bool = false
@@ -24,7 +26,7 @@ final class AppState {
     // Network
     var selectedNetwork: Network = .di
     var playingNetwork: Network?
-    private var networkDataCache: [Network: NetworkData] = [:]
+    var networkDataCache: [Network: NetworkData] = [:]
 
     // Search
     var searchText: String = ""
@@ -151,7 +153,7 @@ final class AppState {
 
     // Stations unfavorited this session stay visible in the Favorites section
     // (with an outline star) so they're easy to re-favorite. Resets on relaunch.
-    private var sessionUnfavorited: [Network: Set<Int>] = [:]
+    var sessionUnfavorited: [Network: Set<Int>] = [:]
 
     // MARK: - Computed
 
@@ -159,149 +161,10 @@ final class AppState {
         networkDataCache[selectedNetwork]?.channels ?? []
     }
 
-    var favoriteChannelIds: Set<Int> {
-        networkDataCache[selectedNetwork]?.favoriteChannelIds ?? []
-    }
-
-    var favoritesLoadFailed: Bool {
-        networkDataCache[selectedNetwork]?.favoritesLoadFailed ?? false
-    }
-
-    var favoriteChannels: [Channel] {
-        let visible = favoriteChannelIds.union(sessionUnfavorited[selectedNetwork] ?? [])
-        return channels
-            .filter { visible.contains($0.id) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
     var filteredChannels: [Channel] {
         let sorted = channels.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if searchText.isEmpty { return sorted }
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-    }
-
-    /// Subscriptions are account-level and managed on DI's site — the sibling
-    /// domains have no subscription page of their own.
-    static let subscriptionURL = URL(string: "https://www.di.fm/member/subscription")!
-    var subscriptionURL: URL { Self.subscriptionURL }
-
-    /// Subscription for the selected network, falling back to any active
-    /// subscription — in practice one premium subscription streams every
-    /// AudioAddict network (verified against the live listen servers).
-    var membershipSubscription: MembershipSubscription? {
-        subscription(for: selectedNetwork) ?? activeSubscription
-    }
-
-    var activeSubscription: MembershipSubscription? {
-        subscriptions.first { ($0.status?.lowercased() ?? "") == "active" || $0.trial == true }
-    }
-
-    /// True once we have real subscription data to gate against.
-    var knowsSubscriptions: Bool { !subscriptions.isEmpty }
-
-    /// "Site · Station" for the menu bar, per the component toggles; nil when
-    /// idle or nothing is selected for this line.
-    var menuBarLine1: String? {
-        guard audioPlayer.isPlaying else { return nil }
-        return composedLine1(
-            site: audioPlayer.currentNetwork?.displayName,
-            station: audioPlayer.currentChannel?.name
-        )
-    }
-
-    /// "Artist – Song" for the menu bar, per the component toggles.
-    var menuBarLine2: String? {
-        guard audioPlayer.isPlaying, let track = audioPlayer.currentTrack else { return nil }
-        return composedLine2(artist: track.artist, song: track.title)
-    }
-
-    /// Preview variants for the settings area: live values while playing,
-    /// placeholder examples otherwise. Same joining logic as the real label.
-    var menuBarPreviewLine1: String? {
-        composedLine1(
-            site: audioPlayer.isPlaying ? audioPlayer.currentNetwork?.displayName : "Jazz Radio",
-            station: audioPlayer.isPlaying ? audioPlayer.currentChannel?.name : "Ambient"
-        )
-    }
-
-    var menuBarPreviewLine2: String? {
-        if audioPlayer.isPlaying, let track = audioPlayer.currentTrack {
-            return composedLine2(artist: track.artist, song: track.title)
-        }
-        return composedLine2(artist: "Metallica", song: "So What")
-    }
-
-    private func composedLine1(site: String?, station: String?) -> String? {
-        var parts: [String] = []
-        if menuBarShowSite, let site, !site.isEmpty {
-            parts.append(site)
-        }
-        if menuBarShowStation, let station, !station.isEmpty {
-            parts.append(station)
-        }
-        guard !parts.isEmpty else { return nil }
-        return Self.truncateForMenuBar(parts.joined(separator: " · "))
-    }
-
-    private func composedLine2(artist: String?, song: String?) -> String? {
-        var parts: [String] = []
-        if menuBarShowArtist, let artist, !artist.isEmpty {
-            parts.append(artist)
-        }
-        if menuBarShowSong, let song, !song.isEmpty, song != "Loading..." {
-            parts.append(song)
-        }
-        guard !parts.isEmpty else { return nil }
-        return Self.truncateForMenuBar(parts.joined(separator: " – "))
-    }
-
-    private static func truncateForMenuBar(_ text: String) -> String {
-        text.count > 35 ? String(text.prefix(34)) + "…" : text
-    }
-
-    func subscription(for network: Network) -> MembershipSubscription? {
-        subscriptions.first { sub in
-            // Older responses may omit network_id; treat those as DI since we authenticate against DI.
-            let subNetwork = sub.networkId.flatMap(Network.from(networkId:)) ?? .di
-            guard subNetwork == network else { return false }
-            let status = sub.status?.lowercased() ?? ""
-            return status == "active" || status == "trial" || sub.trial == true
-        }
-    }
-
-    /// True when a playback failure is plausibly a missing-premium problem:
-    /// we know the account's subscriptions and none of them is active.
-    var playbackFailureLooksLikeNoPremium: Bool {
-        knowsSubscriptions && activeSubscription == nil
-    }
-
-    var membershipHeaderLine: String {
-        guard let status = membershipSubscription?.status?.capitalized, !status.isEmpty else {
-            return "Membership"
-        }
-        return "Membership (\(status))"
-    }
-
-    var membershipDetailLine: String {
-        guard let subscription = membershipSubscription else {
-            if knowsSubscriptions {
-                return "No active subscription — tap to subscribe"
-            }
-            return "Tap to manage subscription"
-        }
-
-        var parts: [String] = []
-        if let startedAt = subscription.startedDate {
-            parts.append("Started \(Self.readableDateFormatter.string(from: startedAt))")
-        }
-        if let expiresOn = subscription.expiresOnDate {
-            let prefix = (subscription.autoRenew ?? false) ? "Renews" : "Expires"
-            parts.append("\(prefix) \(Self.readableDateFormatter.string(from: expiresOn))")
-        }
-        if parts.isEmpty {
-            return "Tap to manage subscription"
-        }
-        return parts.joined(separator: " • ")
     }
 
     // MARK: - Lifecycle
@@ -363,132 +226,10 @@ final class AppState {
         }
     }
 
-    func bootstrap() async {
-        guard !didBootstrap else { return }
-        didBootstrap = true
-
-        // Migrate legacy last-station keys (old name "favorite_station_id" was
-        // misleading — it stores the last played station, not a favorite)
-        if let oldStation = Prefs.rawRead("favorite_station_id") {
-            Prefs.set(oldStation, for: .lastStationId, network: .di)
-            Prefs.rawDelete("favorite_station_id")
-            log.info("bootstrap: migrated favorite_station_id to last_station_id.di")
-        }
-        for network in Network.allCases {
-            if let oldStation = Prefs.rawRead("favorite_station_id.\(network.rawValue)") {
-                Prefs.set(oldStation, for: .lastStationId, network: network)
-                Prefs.rawDelete("favorite_station_id.\(network.rawValue)")
-            }
-        }
-
-        // Migrate the old single "show track in menu bar" toggle to components
-        if Prefs.rawRead("show_track_in_menu_bar") == "1" {
-            menuBarShowArtist = true
-            menuBarShowSong = true
-        }
-        Prefs.rawDelete("show_track_in_menu_bar")
-
-        // ListenBrainz support removed — drop stored credentials
-        Prefs.rawDelete("listenbrainz_token")
-        Prefs.rawDelete("listenbrainz_username")
-
-        recentStationsStore.load()
-
-        // Restore last selected network
-        if let raw = Prefs.string(.selectedNetwork), let net = Network(rawValue: raw) {
-            selectedNetwork = net
-            log.info("bootstrap: restored network=\(net.rawValue)")
-        }
-
-        log.info("bootstrap: checking stored credentials")
-        if let key = Prefs.string(.listenKey) {
-            listenKey = key
-            apiKey = Prefs.string(.apiKey)
-            if let id = Prefs.int(.memberId) {
-                memberId = id
-                log.info("bootstrap: found stored memberId=\(id)")
-            } else {
-                log.warning("bootstrap: no stored member_id found")
-            }
-            log.info("bootstrap: apiKey=\(self.apiKey != nil ? "present" : "nil")")
-            isLoggedIn = true
-            if apiKey != nil {
-                async let channelsLoad: Void = loadChannels(for: selectedNetwork, restoreStation: true)
-                async let membershipLoad: Void = loadMembership()
-                _ = await (channelsLoad, membershipLoad)
-            } else {
-                await loadChannels(for: selectedNetwork, restoreStation: true)
-            }
-        } else {
-            log.info("bootstrap: no stored listen_key")
-        }
-    }
-
-    func login(email: String, password: String) async {
-        errorMessage = nil
-        isLoading = true
-
-        do {
-            let response = try await DIClient.authenticate(email: email, password: password)
-            Prefs.set(response.listenKey, for: .listenKey)
-            if let ak = response.apiKey {
-                Prefs.set(ak, for: .apiKey)
-                log.info("login: apiKey saved")
-            } else {
-                log.warning("login: apiKey is nil in auth response")
-            }
-            if let mid = response.resolvedMemberId {
-                Prefs.set(mid, for: .memberId)
-                memberId = mid
-                log.info("login: memberId=\(mid)")
-            } else {
-                log.warning("login: resolvedMemberId is nil! Auth response had no member ID.")
-            }
-            listenKey = response.listenKey
-            apiKey = response.apiKey
-            subscriptions = response.subscriptions ?? []
-            isLoggedIn = true
-            await loadChannels(for: selectedNetwork)
-        } catch {
-            errorMessage = error.localizedDescription
-            log.error("login error: \(error.localizedDescription)")
-        }
-
-        isLoading = false
-    }
-
-    func logout() {
-        audioPlayer.stop()
-        Prefs.set(nil, for: .listenKey)
-        Prefs.set(nil, for: .apiKey)
-        Prefs.set(nil, for: .memberId)
-        Prefs.set(nil, for: .selectedNetwork)
-        recentStationsStore.clear()
-        for network in Network.allCases {
-            Prefs.set(nil, for: .lastStationId, network: network)
-            Prefs.set(nil, for: .localFavAdded, network: network)
-            Prefs.set(nil, for: .localFavRemoved, network: network)
-        }
-        listenKey = nil
-        apiKey = nil
-        memberId = nil
-        subscriptions = []
-        isLoggedIn = false
-        networkDataCache = [:]
-        sessionUnfavorited = [:]
-        playingNetwork = nil
-        selectedNetwork = .di
-        searchText = ""
-        errorMessage = nil
-    }
-
     // MARK: - Network Selection
 
     func selectNetwork(_ network: Network) {
-        guard network != selectedNetwork else { return }
-        selectedNetwork = network
-        searchText = ""
-        Prefs.set(network.rawValue, for: .selectedNetwork)
+        guard applyNetworkSelection(network) else { return }
 
         if networkDataCache[network]?.isLoaded == true {
             return
@@ -497,6 +238,19 @@ final class AppState {
         Task {
             await loadChannels(for: network)
         }
+    }
+
+    /// Shared selection step for selectNetwork and switchSiteAndPlay: updates
+    /// the UI state and persists the choice, without any loading side effects
+    /// (the callers decide how to load, which is what keeps switchSiteAndPlay's
+    /// awaited load from racing selectNetwork's fire-and-forget one).
+    @discardableResult
+    private func applyNetworkSelection(_ network: Network) -> Bool {
+        guard network != selectedNetwork else { return false }
+        selectedNetwork = network
+        searchText = ""
+        Prefs.set(network.rawValue, for: .selectedNetwork)
+        return true
     }
 
     // MARK: - Data Loading
@@ -528,124 +282,6 @@ final class AppState {
         } catch {
             errorMessage = error.localizedDescription
             log.error("loadChannels(\(target.rawValue)) error: \(error.localizedDescription)")
-        }
-    }
-
-    func loadFavorites(for network: Network? = nil) async {
-        let target = network ?? selectedNetwork
-        var data = networkDataCache[target] ?? NetworkData()
-        guard let ak = apiKey else {
-            log.warning("loadFavorites(\(target.rawValue)): SKIPPED — no apiKey")
-            data.favoritesLoadFailed = true
-            networkDataCache[target] = data
-            return
-        }
-        do {
-            let ids = try await DIClient.fetchFavorites(apiKey: ak, network: target)
-            data.favoriteChannelIds = applyLocalFavoriteOverrides(to: ids, network: target)
-            data.favoritesLoadFailed = false
-            log.info("loadFavorites(\(target.rawValue)): \(ids.count) favorites")
-        } catch {
-            data.favoritesLoadFailed = true
-            log.error("loadFavorites(\(target.rawValue)) error: \(error.localizedDescription)")
-        }
-        networkDataCache[target] = data
-    }
-
-    // MARK: - Favorites Toggle
-
-    func toggleFavorite(_ channel: Channel) {
-        let network = selectedNetwork
-        var data = networkDataCache[network] ?? NetworkData()
-        let adding = !data.favoriteChannelIds.contains(channel.id)
-        if adding {
-            data.favoriteChannelIds.insert(channel.id)
-            sessionUnfavorited[network]?.remove(channel.id)
-        } else {
-            data.favoriteChannelIds.remove(channel.id)
-            sessionUnfavorited[network, default: []].insert(channel.id)
-        }
-        networkDataCache[network] = data
-        log.info("toggleFavorite(\(network.rawValue)): \(adding ? "add" : "remove") \(channel.name)")
-
-        guard favoritesSyncAvailable, let ak = apiKey, let mid = memberId else {
-            recordLocalFavoriteOverride(channelId: channel.id, adding: adding, network: network)
-            return
-        }
-
-        Task {
-            do {
-                // Bulk-replace endpoint: read the server's ordered list, apply
-                // this one change, and write the merged result back.
-                var ids = try await DIClient.fetchFavoritesOrdered(apiKey: ak, network: network)
-                if adding {
-                    if !ids.contains(channel.id) { ids.append(channel.id) }
-                } else {
-                    ids.removeAll { $0 == channel.id }
-                }
-                try await DIClient.setFavorites(channelIds: ids, memberId: mid, apiKey: ak, network: network)
-                clearLocalFavoriteOverrides(for: network)
-                await loadFavorites(for: network)
-            } catch {
-                if case DIClientError.httpError(let code) = error, code == 404 || code == 405 {
-                    favoritesSyncAvailable = false
-                }
-                recordLocalFavoriteOverride(channelId: channel.id, adding: adding, network: network)
-                log.error("toggleFavorite(\(network.rawValue)) sync failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Local additions/removals that couldn't be synced, persisted per network
-    /// and re-applied on top of whatever the server returns.
-    private func localFavoriteOverrides(for network: Network) -> (added: Set<Int>, removed: Set<Int>) {
-        (Prefs.intSet(.localFavAdded, network: network),
-         Prefs.intSet(.localFavRemoved, network: network))
-    }
-
-    private func recordLocalFavoriteOverride(channelId: Int, adding: Bool, network: Network) {
-        var (added, removed) = localFavoriteOverrides(for: network)
-        if adding {
-            added.insert(channelId)
-            removed.remove(channelId)
-        } else {
-            removed.insert(channelId)
-            added.remove(channelId)
-        }
-        Prefs.set(added, for: .localFavAdded, network: network)
-        Prefs.set(removed, for: .localFavRemoved, network: network)
-    }
-
-    private func clearLocalFavoriteOverrides(for network: Network) {
-        Prefs.set(nil, for: .localFavAdded, network: network)
-        Prefs.set(nil, for: .localFavRemoved, network: network)
-    }
-
-    private func applyLocalFavoriteOverrides(to ids: Set<Int>, network: Network) -> Set<Int> {
-        let (added, removed) = localFavoriteOverrides(for: network)
-        return ids.union(added).subtracting(removed)
-    }
-
-    func loadMembership() async {
-        guard let ak = apiKey else {
-            subscriptions = []
-            return
-        }
-
-        do {
-            let profile = try await DIClient.fetchMembership(apiKey: ak)
-            subscriptions = profile.subscriptions ?? []
-            if let resolvedMemberId = profile.resolvedMemberId, resolvedMemberId != memberId {
-                memberId = resolvedMemberId
-                Prefs.set(resolvedMemberId, for: .memberId)
-            }
-            // Log real network_ids so the Network.networkId mapping can be verified in Console
-            let summary = subscriptions
-                .map { "network_id=\($0.networkId?.description ?? "nil") status=\($0.status ?? "?")" }
-                .joined(separator: "; ")
-            log.info("loadMembership: \(self.subscriptions.count) subscriptions [\(summary, privacy: .public)]")
-        } catch {
-            log.error("loadMembership error: \(error.localizedDescription)")
         }
     }
 
@@ -705,14 +341,10 @@ final class AppState {
 
     /// Selects the site in the UI and starts its most sensible channel: the
     /// one last played there, else the first favorite, else the first channel.
-    /// Inlines the selection instead of calling selectNetwork(_:) so its
+    /// Uses applyNetworkSelection (not selectNetwork) so selectNetwork's
     /// fire-and-forget loadChannels Task can't race the awaited one here.
     private func switchSiteAndPlay(_ network: Network) {
-        if network != selectedNetwork {
-            selectedNetwork = network
-            searchText = ""
-            Prefs.set(network.rawValue, for: .selectedNetwork)
-        }
+        applyNetworkSelection(network)
         Task {
             if networkDataCache[network]?.isLoaded != true {
                 await loadChannels(for: network)

@@ -40,6 +40,10 @@
 		A10000010000000000000027 /* DropdownUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000027 /* DropdownUI.swift */; };
 		A10000010000000000000028 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000028 /* SleepTimer.swift */; };
 		A10000010000000000000029 /* RecentStationsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000029 /* RecentStationsStore.swift */; };
+		A1000001000000000000002A /* AppState+MenuBarLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002A /* AppState+MenuBarLabel.swift */; };
+		A1000001000000000000002B /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002B /* AppState+Membership.swift */; };
+		A1000001000000000000002C /* AppState+Favorites.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002C /* AppState+Favorites.swift */; };
+		A1000001000000000000002D /* AppState+Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002D /* AppState+Session.swift */; };
 		A10000010000000000000023 /* TrackMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* TrackMatchingTests.swift */; };
 		A10000010000000000000024 /* HistoryMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000024 /* HistoryMergingTests.swift */; };
 		A10000010000000000000025 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ModelsTests.swift */; };
@@ -83,6 +87,10 @@
 		A20000010000000000000027 /* DropdownUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropdownUI.swift; sourceTree = "<group>"; };
 		A20000010000000000000028 /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
 		A20000010000000000000029 /* RecentStationsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentStationsStore.swift; sourceTree = "<group>"; };
+		A2000001000000000000002A /* AppState+MenuBarLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+MenuBarLabel.swift"; sourceTree = "<group>"; };
+		A2000001000000000000002B /* AppState+Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Membership.swift"; sourceTree = "<group>"; };
+		A2000001000000000000002C /* AppState+Favorites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Favorites.swift"; sourceTree = "<group>"; };
+		A2000001000000000000002D /* AppState+Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Session.swift"; sourceTree = "<group>"; };
 		A20000010000000000000023 /* TrackMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatchingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000024 /* HistoryMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMergingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000025 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
@@ -177,6 +185,10 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000006 /* AppState.swift */,
+				A2000001000000000000002A /* AppState+MenuBarLabel.swift */,
+				A2000001000000000000002B /* AppState+Membership.swift */,
+				A2000001000000000000002C /* AppState+Favorites.swift */,
+				A2000001000000000000002D /* AppState+Session.swift */,
 				A20000010000000000000028 /* SleepTimer.swift */,
 				A20000010000000000000029 /* RecentStationsStore.swift */,
 			);
@@ -343,6 +355,10 @@
 				A10000010000000000000027 /* DropdownUI.swift in Sources */,
 				A10000010000000000000028 /* SleepTimer.swift in Sources */,
 				A10000010000000000000029 /* RecentStationsStore.swift in Sources */,
+				A1000001000000000000002A /* AppState+MenuBarLabel.swift in Sources */,
+				A1000001000000000000002B /* AppState+Membership.swift in Sources */,
+				A1000001000000000000002C /* AppState+Favorites.swift in Sources */,
+				A1000001000000000000002D /* AppState+Session.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
