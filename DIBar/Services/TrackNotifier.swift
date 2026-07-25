@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import UserNotifications
 import os
 
@@ -12,6 +13,7 @@ final class TrackNotifier: NSObject {
     private let player: AudioPlayer
     private var timer: Timer?
     private var enabled = false
+    private var isStarted = false
 
     /// Set from the app delegate so no banner fires while the popover is open.
     var popoverIsVisible = false
@@ -30,18 +32,53 @@ final class TrackNotifier: NSObject {
     }
 
     func start() {
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
-        }
-        timer?.tolerance = 0.3
+        guard !isStarted else { return }
+        isStarted = true
+        syncTimerToPlayback()
+        observePlayback()
     }
 
     func setEnabled(_ isEnabled: Bool) {
+        guard enabled != isEnabled else { return }
         enabled = isEnabled
-        if !isEnabled {
+        if isEnabled {
+            // Seed the diff state so enabling mid-song never fires a stale
+            // notification for changes that happened while disabled.
+            lastChannelId = player.currentChannel?.id
+            lastIdentityToken = player.currentTrackIdentityToken
+        } else {
             pendingPost?.cancel()
             pendingPost = nil
+        }
+        syncTimerToPlayback()
+    }
+
+    /// The song-change diff only matters while notifications are enabled and
+    /// the player is playing; otherwise the timer goes quiet. Channel-switch
+    /// announcements are task-driven and unaffected.
+    private func observePlayback() {
+        withObservationTracking {
+            _ = player.isPlaying
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncTimerToPlayback()
+                self.observePlayback()
+            }
+        }
+    }
+
+    private func syncTimerToPlayback() {
+        guard isStarted else { return }
+        if enabled && player.isPlaying {
+            guard timer == nil else { return }
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.tick() }
+            }
+            timer?.tolerance = 0.3
+        } else {
+            timer?.invalidate()
+            timer = nil
         }
     }
 
