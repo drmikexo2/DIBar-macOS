@@ -34,6 +34,7 @@ final class TrackNotifier: NSObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        timer?.tolerance = 0.3
     }
 
     func setEnabled(_ isEnabled: Bool) {

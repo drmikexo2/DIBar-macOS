@@ -110,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         labelTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshLabel() }
         }
+        labelTimer?.tolerance = 0.3
 
         NotificationCenter.default.addObserver(forName: .dibarOpenSettings, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.showSettingsWindow() }
