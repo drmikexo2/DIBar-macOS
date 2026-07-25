@@ -200,6 +200,8 @@ final class AudioPlayer {
         isPlaying = false
         pausedAt = Date()
         phase = .paused
+        trackPollTask?.cancel()
+        trackPollTask = nil
         updateNowPlaying()
     }
 
@@ -217,6 +219,9 @@ final class AudioPlayer {
         player?.play()
         isPlaying = true
         phase = .buffering
+        if let args = lastPlayArgs, trackPollTask == nil {
+            startTrackPolling(channelId: args.channel.id, channelName: args.channel.name, network: args.network)
+        }
         updateNowPlaying()
     }
 
