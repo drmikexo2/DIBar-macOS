@@ -6,7 +6,7 @@ import SwiftUI
 struct SleepTimerView: View {
     @Environment(AppState.self) private var appState
     @State private var isOpen = false
-    @State private var customMinutes = Prefs.read(key: "sleep_timer_custom_minutes") ?? "45"
+    @State private var customMinutes = Prefs.string(.sleepTimerCustomMinutes) ?? "45"
 
     private let presets = [15, 30, 60, 90]
 
@@ -96,7 +96,7 @@ struct SleepTimerView: View {
 
     private func startCustomTimer() {
         guard let minutes = Int(customMinutes), minutes > 0 else { return }
-        Prefs.save(key: "sleep_timer_custom_minutes", value: String(minutes))
+        Prefs.set(String(minutes), for: .sleepTimerCustomMinutes)
         appState.startSleepTimer(minutes: minutes)
         isOpen = false
     }

@@ -248,7 +248,7 @@ struct SettingsWindowView: View {
                 Button {
                     guard appState.selectedQuality != quality else { return }
                     appState.selectedQuality = quality
-                    Prefs.save(key: "quality", value: quality.rawValue)
+                    Prefs.set(quality.rawValue, for: .quality)
                     appState.restartStreamForQualityChange()
                 } label: {
                     // Every item reserves the checkmark slot so names align

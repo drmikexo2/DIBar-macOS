@@ -36,8 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastLabelKey: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Must precede AppState() — its stored properties read prefs at init
-        Prefs.migrateDefaultsV2()
+        // Prefs migrates itself lazily on first access, so no ordering here.
         appState = AppState()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

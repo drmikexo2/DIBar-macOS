@@ -14,8 +14,8 @@ final class Scrobbler {
     private let recorder: HistoryRecorder
 
     // Connections (tokens live in UserDefaults by design)
-    private(set) var lastFMSessionKey: String? = Prefs.read(key: "lastfm_session_key")
-    private(set) var lastFMUsername: String? = Prefs.read(key: "lastfm_username")
+    private(set) var lastFMSessionKey: String? = Prefs.string(.lastFMSessionKey)
+    private(set) var lastFMUsername: String? = Prefs.string(.lastFMUsername)
 
     /// Set when Last.fm reports the session invalid (error 9).
     var lastFMNeedsReconnect = false
@@ -194,8 +194,8 @@ final class Scrobbler {
                 lastFMUsername = session.username
                 lastFMPendingToken = nil
                 lastFMNeedsReconnect = false
-                Prefs.save(key: "lastfm_session_key", value: session.key)
-                Prefs.save(key: "lastfm_username", value: session.username)
+                Prefs.set(session.key, for: .lastFMSessionKey)
+                Prefs.set(session.username, for: .lastFMUsername)
                 flush()
             } catch {
                 connectionError = "Last.fm: authorize in the browser first, then try again"
@@ -208,7 +208,7 @@ final class Scrobbler {
         lastFMUsername = nil
         lastFMPendingToken = nil
         lastFMNeedsReconnect = needsReconnect
-        Prefs.delete(key: "lastfm_session_key")
-        Prefs.delete(key: "lastfm_username")
+        Prefs.set(nil, for: .lastFMSessionKey)
+        Prefs.set(nil, for: .lastFMUsername)
     }
 }

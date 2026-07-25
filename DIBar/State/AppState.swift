@@ -38,9 +38,9 @@ final class AppState {
 
     // Listening history
     let historyRecorder: HistoryRecorder
-    var saveListeningHistory: Bool = Prefs.read(key: "save_history") != "0" {
+    var saveListeningHistory: Bool = Prefs.bool(.saveHistory, default: true) {
         didSet {
-            Prefs.save(key: "save_history", value: saveListeningHistory ? "1" : "0")
+            Prefs.set(saveListeningHistory, for: .saveHistory)
             historyRecorder.setEnabled(saveListeningHistory)
         }
     }
@@ -52,9 +52,9 @@ final class AppState {
     let trackNotifier: TrackNotifier
     /// Shown under the Settings row when macOS denied notification permission.
     var notifyPermissionHint: String?
-    var notifyTrackChanges: Bool = Prefs.read(key: "notify_track_changes") == "1" {
+    var notifyTrackChanges: Bool = Prefs.bool(.notifyTrackChanges, default: false) {
         didSet {
-            Prefs.save(key: "notify_track_changes", value: notifyTrackChanges ? "1" : "0")
+            Prefs.set(notifyTrackChanges, for: .notifyTrackChanges)
             trackNotifier.setEnabled(notifyTrackChanges)
             guard notifyTrackChanges else { return }
             notifyPermissionHint = nil
@@ -67,9 +67,9 @@ final class AppState {
     }
     /// Banner after a hotkey-driven channel/site switch — the feedback that
     /// makes switching without the popover open usable. Default ON.
-    var notifySwitchChanges: Bool = Prefs.read(key: "notify_channel_switch") != "0" {
+    var notifySwitchChanges: Bool = Prefs.bool(.notifyChannelSwitch, default: true) {
         didSet {
-            Prefs.save(key: "notify_channel_switch", value: notifySwitchChanges ? "1" : "0")
+            Prefs.set(notifySwitchChanges, for: .notifyChannelSwitch)
             guard notifySwitchChanges else { return }
             notifyPermissionHint = nil
             trackNotifier.requestAuthorization { [weak self] granted in
@@ -84,15 +84,11 @@ final class AppState {
     let deviceManager = AudioDeviceManager()
     /// The user's chosen device UID; kept even while the device is absent so
     /// the route re-applies when it comes back.
-    var outputDeviceUID: String? = Prefs.read(key: "output_device_uid")
+    var outputDeviceUID: String? = Prefs.string(.outputDeviceUID)
 
     func setOutputDevice(uid: String?) {
         outputDeviceUID = uid
-        if let uid {
-            Prefs.save(key: "output_device_uid", value: uid)
-        } else {
-            Prefs.delete(key: "output_device_uid")
-        }
+        Prefs.set(uid, for: .outputDeviceUID)
         applyOutputDevice()
     }
 
@@ -104,11 +100,11 @@ final class AppState {
     }
 
     // Global hotkeys — default on for new installs; existing installs that
-    // never touched the setting are pinned off by Prefs.migrateDefaultsV2().
+    // never touched the setting are pinned off by the Prefs v2 migration.
     private let hotkeyManager = HotkeyManager()
-    var globalHotkeysEnabled: Bool = Prefs.read(key: "global_hotkeys") != "0" {
+    var globalHotkeysEnabled: Bool = Prefs.bool(.globalHotkeys, default: true) {
         didSet {
-            Prefs.save(key: "global_hotkeys", value: globalHotkeysEnabled ? "1" : "0")
+            Prefs.set(globalHotkeysEnabled, for: .globalHotkeys)
             hotkeyManager.setEnabled(globalHotkeysEnabled)
         }
     }
@@ -116,17 +112,13 @@ final class AppState {
     // Sleep timer — session-only; never persisted across launches
     var sleepTimerEndDate: Date?
     private var sleepTimerTimer: Timer?
-    var sleepTimerQuitsApp: Bool = Prefs.read(key: "sleep_timer_quits") == "1" {
-        didSet { Prefs.save(key: "sleep_timer_quits", value: sleepTimerQuitsApp ? "1" : "0") }
+    var sleepTimerQuitsApp: Bool = Prefs.bool(.sleepTimerQuits, default: false) {
+        didSet { Prefs.set(sleepTimerQuitsApp, for: .sleepTimerQuits) }
     }
 
     // Settings
-    var selectedQuality: StreamQuality = {
-        if let raw = Prefs.read(key: "quality"), let q = StreamQuality(rawValue: raw) {
-            return q
-        }
-        return .premiumHigh
-    }()
+    var selectedQuality: StreamQuality =
+        Prefs.string(.quality).flatMap(StreamQuality.init(rawValue:)) ?? .premiumHigh
     var subscriptions: [MembershipSubscription] = []
 
     // UI
@@ -136,21 +128,21 @@ final class AppState {
     var artworkExpanded: Bool = false
     // Menu bar label components. "Site" in the UI, Network in code.
     // All components default ON for new installs; existing installs that never
-    // touched them are pinned off by Prefs.migrateDefaultsV2().
-    var menuBarShowPlayState: Bool = Prefs.read(key: "menubar_show_playstate") != "0" {
-        didSet { Prefs.save(key: "menubar_show_playstate", value: menuBarShowPlayState ? "1" : "0") }
+    // touched them are pinned off by the Prefs v2 migration.
+    var menuBarShowPlayState: Bool = Prefs.bool(.menuBarShowPlayState, default: true) {
+        didSet { Prefs.set(menuBarShowPlayState, for: .menuBarShowPlayState) }
     }
-    var menuBarShowSite: Bool = Prefs.read(key: "menubar_show_site") != "0" {
-        didSet { Prefs.save(key: "menubar_show_site", value: menuBarShowSite ? "1" : "0") }
+    var menuBarShowSite: Bool = Prefs.bool(.menuBarShowSite, default: true) {
+        didSet { Prefs.set(menuBarShowSite, for: .menuBarShowSite) }
     }
-    var menuBarShowStation: Bool = Prefs.read(key: "menubar_show_station") != "0" {
-        didSet { Prefs.save(key: "menubar_show_station", value: menuBarShowStation ? "1" : "0") }
+    var menuBarShowStation: Bool = Prefs.bool(.menuBarShowStation, default: true) {
+        didSet { Prefs.set(menuBarShowStation, for: .menuBarShowStation) }
     }
-    var menuBarShowArtist: Bool = Prefs.read(key: "menubar_show_artist") != "0" {
-        didSet { Prefs.save(key: "menubar_show_artist", value: menuBarShowArtist ? "1" : "0") }
+    var menuBarShowArtist: Bool = Prefs.bool(.menuBarShowArtist, default: true) {
+        didSet { Prefs.set(menuBarShowArtist, for: .menuBarShowArtist) }
     }
-    var menuBarShowSong: Bool = Prefs.read(key: "menubar_show_song") != "0" {
-        didSet { Prefs.save(key: "menubar_show_song", value: menuBarShowSong ? "1" : "0") }
+    var menuBarShowSong: Bool = Prefs.bool(.menuBarShowSong, default: true) {
+        didSet { Prefs.set(menuBarShowSong, for: .menuBarShowSong) }
     }
 
     // Favorites sync — flips false on a definitive 404/405 from the write
@@ -370,42 +362,42 @@ final class AppState {
 
         // Migrate legacy last-station keys (old name "favorite_station_id" was
         // misleading — it stores the last played station, not a favorite)
-        if let oldStation = Prefs.read(key: "favorite_station_id") {
-            Prefs.save(key: "last_station_id.di", value: oldStation)
-            Prefs.delete(key: "favorite_station_id")
+        if let oldStation = Prefs.rawRead("favorite_station_id") {
+            Prefs.set(oldStation, for: .lastStationId, network: .di)
+            Prefs.rawDelete("favorite_station_id")
             log.info("bootstrap: migrated favorite_station_id to last_station_id.di")
         }
         for network in Network.allCases {
-            if let oldStation = Prefs.read(key: "favorite_station_id.\(network.rawValue)") {
-                Prefs.save(key: "last_station_id.\(network.rawValue)", value: oldStation)
-                Prefs.delete(key: "favorite_station_id.\(network.rawValue)")
+            if let oldStation = Prefs.rawRead("favorite_station_id.\(network.rawValue)") {
+                Prefs.set(oldStation, for: .lastStationId, network: network)
+                Prefs.rawDelete("favorite_station_id.\(network.rawValue)")
             }
         }
 
         // Migrate the old single "show track in menu bar" toggle to components
-        if Prefs.read(key: "show_track_in_menu_bar") == "1" {
+        if Prefs.rawRead("show_track_in_menu_bar") == "1" {
             menuBarShowArtist = true
             menuBarShowSong = true
         }
-        Prefs.delete(key: "show_track_in_menu_bar")
+        Prefs.rawDelete("show_track_in_menu_bar")
 
         // ListenBrainz support removed — drop stored credentials
-        Prefs.delete(key: "listenbrainz_token")
-        Prefs.delete(key: "listenbrainz_username")
+        Prefs.rawDelete("listenbrainz_token")
+        Prefs.rawDelete("listenbrainz_username")
 
         loadRecentStations()
 
         // Restore last selected network
-        if let raw = Prefs.read(key: "selected_network"), let net = Network(rawValue: raw) {
+        if let raw = Prefs.string(.selectedNetwork), let net = Network(rawValue: raw) {
             selectedNetwork = net
             log.info("bootstrap: restored network=\(net.rawValue)")
         }
 
         log.info("bootstrap: checking stored credentials")
-        if let key = Prefs.read(key: "listen_key") {
+        if let key = Prefs.string(.listenKey) {
             listenKey = key
-            apiKey = Prefs.read(key: "api_key")
-            if let idStr = Prefs.read(key: "member_id"), let id = Int(idStr) {
+            apiKey = Prefs.string(.apiKey)
+            if let id = Prefs.int(.memberId) {
                 memberId = id
                 log.info("bootstrap: found stored memberId=\(id)")
             } else {
@@ -431,15 +423,15 @@ final class AppState {
 
         do {
             let response = try await DIClient.authenticate(email: email, password: password)
-            Prefs.save(key: "listen_key", value: response.listenKey)
+            Prefs.set(response.listenKey, for: .listenKey)
             if let ak = response.apiKey {
-                Prefs.save(key: "api_key", value: ak)
+                Prefs.set(ak, for: .apiKey)
                 log.info("login: apiKey saved")
             } else {
                 log.warning("login: apiKey is nil in auth response")
             }
             if let mid = response.resolvedMemberId {
-                Prefs.save(key: "member_id", value: String(mid))
+                Prefs.set(mid, for: .memberId)
                 memberId = mid
                 log.info("login: memberId=\(mid)")
             } else {
@@ -460,16 +452,16 @@ final class AppState {
 
     func logout() {
         audioPlayer.stop()
-        Prefs.delete(key: "listen_key")
-        Prefs.delete(key: "api_key")
-        Prefs.delete(key: "member_id")
-        Prefs.delete(key: "selected_network")
-        Prefs.delete(key: "recent_stations")
+        Prefs.set(nil, for: .listenKey)
+        Prefs.set(nil, for: .apiKey)
+        Prefs.set(nil, for: .memberId)
+        Prefs.set(nil, for: .selectedNetwork)
+        Prefs.set(nil, for: .recentStations)
         recentStations = []
         for network in Network.allCases {
-            Prefs.delete(key: "last_station_id.\(network.rawValue)")
-            Prefs.delete(key: "local_fav_added.\(network.rawValue)")
-            Prefs.delete(key: "local_fav_removed.\(network.rawValue)")
+            Prefs.set(nil, for: .lastStationId, network: network)
+            Prefs.set(nil, for: .localFavAdded, network: network)
+            Prefs.set(nil, for: .localFavRemoved, network: network)
         }
         listenKey = nil
         apiKey = nil
@@ -490,7 +482,7 @@ final class AppState {
         guard network != selectedNetwork else { return }
         selectedNetwork = network
         searchText = ""
-        Prefs.save(key: "selected_network", value: network.rawValue)
+        Prefs.set(network.rawValue, for: .selectedNetwork)
 
         if networkDataCache[network]?.isLoaded == true {
             return
@@ -601,11 +593,8 @@ final class AppState {
     /// Local additions/removals that couldn't be synced, persisted per network
     /// and re-applied on top of whatever the server returns.
     private func localFavoriteOverrides(for network: Network) -> (added: Set<Int>, removed: Set<Int>) {
-        func read(_ key: String) -> Set<Int> {
-            Set((Prefs.read(key: "\(key).\(network.rawValue)") ?? "")
-                .split(separator: ",").compactMap { Int($0) })
-        }
-        return (read("local_fav_added"), read("local_fav_removed"))
+        (Prefs.intSet(.localFavAdded, network: network),
+         Prefs.intSet(.localFavRemoved, network: network))
     }
 
     private func recordLocalFavoriteOverride(channelId: Int, adding: Bool, network: Network) {
@@ -617,13 +606,13 @@ final class AppState {
             removed.insert(channelId)
             added.remove(channelId)
         }
-        Prefs.save(key: "local_fav_added.\(network.rawValue)", value: added.map(String.init).joined(separator: ","))
-        Prefs.save(key: "local_fav_removed.\(network.rawValue)", value: removed.map(String.init).joined(separator: ","))
+        Prefs.set(added, for: .localFavAdded, network: network)
+        Prefs.set(removed, for: .localFavRemoved, network: network)
     }
 
     private func clearLocalFavoriteOverrides(for network: Network) {
-        Prefs.delete(key: "local_fav_added.\(network.rawValue)")
-        Prefs.delete(key: "local_fav_removed.\(network.rawValue)")
+        Prefs.set(nil, for: .localFavAdded, network: network)
+        Prefs.set(nil, for: .localFavRemoved, network: network)
     }
 
     private func applyLocalFavoriteOverrides(to ids: Set<Int>, network: Network) -> Set<Int> {
@@ -642,7 +631,7 @@ final class AppState {
             subscriptions = profile.subscriptions ?? []
             if let resolvedMemberId = profile.resolvedMemberId, resolvedMemberId != memberId {
                 memberId = resolvedMemberId
-                Prefs.save(key: "member_id", value: String(resolvedMemberId))
+                Prefs.set(resolvedMemberId, for: .memberId)
             }
             // Log real network_ids so the Network.networkId mapping can be verified in Console
             let summary = subscriptions
@@ -664,7 +653,7 @@ final class AppState {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: network)
         else { return }
-        Prefs.save(key: "last_station_id.\(network.rawValue)", value: String(channel.id))
+        Prefs.set(channel.id, for: .lastStationId, network: network)
         playingNetwork = network
         recordRecentStation(channel, network: network)
         log.info("playChannel: \(channel.name) on \(network.rawValue) -> \(url)")
@@ -716,7 +705,7 @@ final class AppState {
         if network != selectedNetwork {
             selectedNetwork = network
             searchText = ""
-            Prefs.save(key: "selected_network", value: network.rawValue)
+            Prefs.set(network.rawValue, for: .selectedNetwork)
         }
         Task {
             if networkDataCache[network]?.isLoaded != true {
@@ -724,8 +713,7 @@ final class AppState {
             }
             guard let data = networkDataCache[network], !data.channels.isEmpty else { return }
             let target: Channel
-            if let raw = Prefs.read(key: "last_station_id.\(network.rawValue)"),
-               let id = Int(raw),
+            if let id = Prefs.int(.lastStationId, network: network),
                let saved = data.channels.first(where: { $0.id == id }) {
                 target = saved
             } else {
@@ -780,7 +768,7 @@ final class AppState {
     }
 
     private func loadRecentStations() {
-        guard let raw = Prefs.read(key: "recent_stations"),
+        guard let raw = Prefs.string(.recentStations),
               let data = raw.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([RecentStation].self, from: data)
         else { return }
@@ -791,7 +779,7 @@ final class AppState {
         guard let data = try? JSONEncoder().encode(recentStations),
               let json = String(data: data, encoding: .utf8)
         else { return }
-        Prefs.save(key: "recent_stations", value: json)
+        Prefs.set(json, for: .recentStations)
     }
 
     // MARK: - Song Votes
@@ -893,11 +881,9 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
-        guard let raw = Prefs.read(key: "last_station_id.\(selectedNetwork.rawValue)"),
-              let channelId = Int(raw)
-        else { return }
+        guard let channelId = Prefs.int(.lastStationId, network: selectedNetwork) else { return }
         guard let channel = channels.first(where: { $0.id == channelId }) else {
-            log.warning("restoreSavedStationIfNeeded: saved station id=\(raw, privacy: .public) not found on \(self.selectedNetwork.rawValue)")
+            log.warning("restoreSavedStationIfNeeded: saved station id=\(channelId) not found on \(self.selectedNetwork.rawValue)")
             return
         }
 

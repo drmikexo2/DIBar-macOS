@@ -2,8 +2,8 @@ import SwiftUI
 
 struct StationListView: View {
     @Environment(AppState.self) private var appState
-    @State private var allStationsExpanded = Prefs.read(key: "all_stations_expanded") != "0"
-    @State private var recentExpanded = Prefs.read(key: "recent_stations_expanded") != "0"
+    @State private var allStationsExpanded = Prefs.bool(.allStationsExpanded, default: true)
+    @State private var recentExpanded = Prefs.bool(.recentStationsExpanded, default: true)
     @State private var highlightedIndex: Int?
     @FocusState private var searchFocused: Bool
 
@@ -157,10 +157,10 @@ struct StationListView: View {
             }
         }
         .onChange(of: allStationsExpanded) { _, expanded in
-            Prefs.save(key: "all_stations_expanded", value: expanded ? "1" : "0")
+            Prefs.set(expanded, for: .allStationsExpanded)
         }
         .onChange(of: recentExpanded) { _, expanded in
-            Prefs.save(key: "recent_stations_expanded", value: expanded ? "1" : "0")
+            Prefs.set(expanded, for: .recentStationsExpanded)
         }
         .onChange(of: appState.searchText) { _, _ in
             highlightedIndex = nil
