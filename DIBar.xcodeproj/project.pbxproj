@@ -44,6 +44,8 @@
 		A1000001000000000000002B /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002B /* AppState+Membership.swift */; };
 		A1000001000000000000002C /* AppState+Favorites.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002C /* AppState+Favorites.swift */; };
 		A1000001000000000000002D /* AppState+Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002D /* AppState+Session.swift */; };
+		A1000001000000000000002F /* DIBarApp+Debug.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000002F /* DIBarApp+Debug.swift */; };
+		A10000010000000000000030 /* MenuBarLabelRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* MenuBarLabelRenderer.swift */; };
 		A10000010000000000000023 /* TrackMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000023 /* TrackMatchingTests.swift */; };
 		A10000010000000000000024 /* HistoryMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000024 /* HistoryMergingTests.swift */; };
 		A10000010000000000000025 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ModelsTests.swift */; };
@@ -91,6 +93,8 @@
 		A2000001000000000000002B /* AppState+Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Membership.swift"; sourceTree = "<group>"; };
 		A2000001000000000000002C /* AppState+Favorites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Favorites.swift"; sourceTree = "<group>"; };
 		A2000001000000000000002D /* AppState+Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Session.swift"; sourceTree = "<group>"; };
+		A2000001000000000000002F /* DIBarApp+Debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DIBarApp+Debug.swift"; sourceTree = "<group>"; };
+		A20000010000000000000030 /* MenuBarLabelRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarLabelRenderer.swift; sourceTree = "<group>"; };
 		A20000010000000000000023 /* TrackMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMatchingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000024 /* HistoryMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMergingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000025 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
@@ -140,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000001 /* DIBarApp.swift */,
+				A2000001000000000000002F /* DIBarApp+Debug.swift */,
 				A2000001000000000000000D /* Info.plist */,
 				A2000001000000000000000F /* DIBar.entitlements */,
 				A2000001000000000000000C /* Assets.xcassets */,
@@ -210,6 +215,7 @@
 				A20000010000000000000019 /* SongActionsMenu.swift */,
 				A2000001000000000000001D /* OutputDevicePicker.swift */,
 				A20000010000000000000027 /* DropdownUI.swift */,
+				A20000010000000000000030 /* MenuBarLabelRenderer.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -359,6 +365,8 @@
 				A1000001000000000000002B /* AppState+Membership.swift in Sources */,
 				A1000001000000000000002C /* AppState+Favorites.swift in Sources */,
 				A1000001000000000000002D /* AppState+Session.swift in Sources */,
+				A1000001000000000000002F /* DIBarApp+Debug.swift in Sources */,
+				A10000010000000000000030 /* MenuBarLabelRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
