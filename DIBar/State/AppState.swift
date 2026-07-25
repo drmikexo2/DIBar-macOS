@@ -30,8 +30,8 @@ final class AppState {
     var searchText: String = ""
 
     // Recently played stations, most recent first, across all networks
-    var recentStations: [RecentStation] = []
-    private static let recentStationsLimit = 8
+    let recentStationsStore = RecentStationsStore()
+    var recentStations: [RecentStation] { recentStationsStore.entries }
 
     // Playback
     let audioPlayer = AudioPlayer()
@@ -110,8 +110,8 @@ final class AppState {
     }
 
     // Sleep timer — session-only; never persisted across launches
-    var sleepTimerEndDate: Date?
-    private var sleepTimerTimer: Timer?
+    let sleepTimer = SleepTimer()
+    var sleepTimerEndDate: Date? { sleepTimer.endDate }
     var sleepTimerQuitsApp: Bool = Prefs.bool(.sleepTimerQuits, default: false) {
         didSet { Prefs.set(sleepTimerQuitsApp, for: .sleepTimerQuits) }
     }
@@ -347,6 +347,13 @@ final class AppState {
             }
         }
         hotkeyManager.setEnabled(globalHotkeysEnabled)
+        sleepTimer.onFire = { [weak self] in
+            guard let self else { return }
+            self.audioPlayer.pause()
+            if self.sleepTimerQuitsApp {
+                NSApp.terminate(nil)
+            }
+        }
         deviceManager.onDevicesChanged = { [weak self] in
             self?.applyOutputDevice()
         }
@@ -385,7 +392,7 @@ final class AppState {
         Prefs.rawDelete("listenbrainz_token")
         Prefs.rawDelete("listenbrainz_username")
 
-        loadRecentStations()
+        recentStationsStore.load()
 
         // Restore last selected network
         if let raw = Prefs.string(.selectedNetwork), let net = Network(rawValue: raw) {
@@ -456,8 +463,7 @@ final class AppState {
         Prefs.set(nil, for: .apiKey)
         Prefs.set(nil, for: .memberId)
         Prefs.set(nil, for: .selectedNetwork)
-        Prefs.set(nil, for: .recentStations)
-        recentStations = []
+        recentStationsStore.clear()
         for network in Network.allCases {
             Prefs.set(nil, for: .lastStationId, network: network)
             Prefs.set(nil, for: .localFavAdded, network: network)
@@ -655,7 +661,7 @@ final class AppState {
         else { return }
         Prefs.set(channel.id, for: .lastStationId, network: network)
         playingNetwork = network
-        recordRecentStation(channel, network: network)
+        recentStationsStore.record(channel, network: network)
         log.info("playChannel: \(channel.name) on \(network.rawValue) -> \(url)")
         audioPlayer.play(channel: channel, streamURL: url, network: network)
     }
@@ -749,37 +755,11 @@ final class AppState {
             }
             guard let channel = channels.first(where: { $0.id == entry.channelId }) else {
                 log.warning("playRecentStation: '\(entry.name, privacy: .public)' no longer on \(entry.network.rawValue)")
-                recentStations.removeAll { $0.id == entry.id }
-                persistRecentStations()
+                recentStationsStore.remove(id: entry.id)
                 return
             }
             playChannel(channel)
         }
-    }
-
-    private func recordRecentStation(_ channel: Channel, network: Network) {
-        let entry = RecentStation(network: network, channelId: channel.id, channelKey: channel.key, name: channel.name)
-        recentStations.removeAll { $0.network == network && $0.channelId == channel.id }
-        recentStations.insert(entry, at: 0)
-        if recentStations.count > Self.recentStationsLimit {
-            recentStations.removeLast(recentStations.count - Self.recentStationsLimit)
-        }
-        persistRecentStations()
-    }
-
-    private func loadRecentStations() {
-        guard let raw = Prefs.string(.recentStations),
-              let data = raw.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([RecentStation].self, from: data)
-        else { return }
-        recentStations = decoded
-    }
-
-    private func persistRecentStations() {
-        guard let data = try? JSONEncoder().encode(recentStations),
-              let json = String(data: data, encoding: .utf8)
-        else { return }
-        Prefs.set(json, for: .recentStations)
     }
 
     // MARK: - Song Votes
@@ -851,32 +831,11 @@ final class AppState {
     // MARK: - Sleep Timer
 
     func startSleepTimer(minutes: Int) {
-        let clamped = min(max(minutes, 1), 720)
-        sleepTimerEndDate = Date().addingTimeInterval(TimeInterval(clamped * 60))
-        // A 1s date-compare timer instead of a one-shot: after system sleep the
-        // next tick still fires an overdue timer correctly.
-        if sleepTimerTimer == nil {
-            sleepTimerTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.sleepTimerTick() }
-            }
-        }
-        log.info("sleep timer: set for \(clamped)min")
+        sleepTimer.start(minutes: minutes)
     }
 
     func cancelSleepTimer() {
-        sleepTimerEndDate = nil
-        sleepTimerTimer?.invalidate()
-        sleepTimerTimer = nil
-    }
-
-    private func sleepTimerTick() {
-        guard let end = sleepTimerEndDate, Date() >= end else { return }
-        cancelSleepTimer()
-        log.info("sleep timer: fired")
-        audioPlayer.pause()
-        if sleepTimerQuitsApp {
-            NSApp.terminate(nil)
-        }
+        sleepTimer.cancel()
     }
 
     private func restoreSavedStationIfNeeded() {
