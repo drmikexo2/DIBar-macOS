@@ -58,8 +58,8 @@ final class AppState {
             trackNotifier.setEnabled(notifyTrackChanges)
             guard notifyTrackChanges else { return }
             notifyPermissionHint = nil
-            trackNotifier.requestAuthorization { [weak self] granted in
-                guard let self, !granted else { return }
+            Task { [weak self] in
+                guard let self, await !self.trackNotifier.requestAuthorization() else { return }
                 self.notifyTrackChanges = false
                 self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
             }
@@ -72,8 +72,8 @@ final class AppState {
             Prefs.set(notifySwitchChanges, for: .notifyChannelSwitch)
             guard notifySwitchChanges else { return }
             notifyPermissionHint = nil
-            trackNotifier.requestAuthorization { [weak self] granted in
-                guard let self, !granted else { return }
+            Task { [weak self] in
+                guard let self, await !self.trackNotifier.requestAuthorization() else { return }
                 self.notifySwitchChanges = false
                 self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
             }
@@ -327,8 +327,8 @@ final class AppState {
         // Ask for notification permission up front — a deliberate first-launch
         // moment instead of a prompt buried under a hotkey press.
         if notifySwitchChanges || notifyTrackChanges {
-            trackNotifier.requestAuthorization { [weak self] granted in
-                guard let self, !granted else { return }
+            Task { [weak self] in
+                guard let self, await !self.trackNotifier.requestAuthorization() else { return }
                 self.notifySwitchChanges = false
                 self.notifyTrackChanges = false
                 self.notifyPermissionHint = "Enable DIBar in System Settings → Notifications"
@@ -497,12 +497,12 @@ final class AppState {
 
     func loadChannels(for network: Network? = nil, restoreStation: Bool = false) async {
         let target = network ?? selectedNetwork
-        guard let key = listenKey else { return }
+        guard listenKey != nil else { return }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            async let channelsFetch = DIClient.fetchChannels(listenKey: key, quality: selectedQuality, network: target)
+            async let channelsFetch = DIClient.fetchChannels(network: target)
             async let favoritesFetch: Void = loadFavorites(for: target)
             let fetchedChannels = try await channelsFetch
             await favoritesFetch

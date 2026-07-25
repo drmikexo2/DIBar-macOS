@@ -72,10 +72,9 @@ final class ModelsTests: XCTestCase {
         createdAt: String? = nil
     ) -> MembershipSubscription {
         MembershipSubscription(
-            id: 1, status: "active", autoRenew: true, renewalType: nil,
-            trial: false, planId: nil, expiresOn: expiresOn,
-            firstTrialAt: firstTrialAt, createdAt: createdAt,
-            memberId: nil, networkId: 1, plan: nil
+            status: "active", autoRenew: true, trial: false,
+            expiresOn: expiresOn, firstTrialAt: firstTrialAt,
+            createdAt: createdAt, networkId: 1
         )
     }
 

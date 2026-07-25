@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import MediaPlayer
-import Combine
 import os
 
 private let log = Logger(subsystem: "com.dibar", category: "AudioPlayer")
@@ -343,7 +342,7 @@ final class AudioPlayer {
             let delay = Self.reconnectBackoff[min(reconnectAttempt, Self.reconnectBackoff.count - 1)]
             reconnectAttempt += 1
             phase = .reconnecting(attempt: reconnectAttempt)
-            log.error("RECONNECT: attempt \(self.reconnectAttempt, privacy: .public)/\(maxAttempts, privacy: .public) in \(delay, privacy: .public)s")
+            log.debug("RECONNECT: attempt \(self.reconnectAttempt, privacy: .public)/\(maxAttempts, privacy: .public) in \(delay, privacy: .public)s")
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, isPlaying, let args = lastPlayArgs else { return }
 
@@ -353,13 +352,13 @@ final class AudioPlayer {
             phase = .reconnecting(attempt: reconnectAttempt)
 
             if await waitUntilPlaying(timeout: 15) {
-                log.error("RECONNECT: recovered")
+                log.debug("RECONNECT: recovered")
                 return
             }
             guard !Task.isCancelled, isPlaying else { return }
         }
 
-        log.error("RECONNECT: giving up after \(self.reconnectAttempt, privacy: .public) attempts")
+        log.debug("RECONNECT: giving up after \(self.reconnectAttempt, privacy: .public) attempts")
         isPlaying = false
         phase = .failed
         autoResumeOnNetworkReturn = true
@@ -471,7 +470,7 @@ final class AudioPlayer {
             while !Task.isCancelled {
                 if let remaining = self?.apiTimeRemaining, remaining > 0, remaining < 30 {
                     // Near track end — sleep until track_end + 1s
-                    log.error("POLL: sleeping \(remaining + 1, privacy: .public)s (track_end+1, remaining=\(remaining, privacy: .public))")
+                    log.debug("POLL: sleeping \(remaining + 1, privacy: .public)s (track_end+1, remaining=\(remaining, privacy: .public))")
                     try? await Task.sleep(for: .seconds(remaining + 1))
                     guard !Task.isCancelled, self != nil else { break }
 
@@ -482,7 +481,7 @@ final class AudioPlayer {
                     if self?.apiTrackIdentity == oldIdentity {
                         for attempt in 1...4 {
                             let offset = 1 + attempt * 2 // +3, +5, +7, +9
-                            log.error("POLL: retry \(attempt, privacy: .public)/4 (track_end+\(offset, privacy: .public)s)")
+                            log.debug("POLL: retry \(attempt, privacy: .public)/4 (track_end+\(offset, privacy: .public)s)")
                             try? await Task.sleep(for: .seconds(2))
                             guard !Task.isCancelled, self != nil else { break }
                             await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
@@ -491,7 +490,7 @@ final class AudioPlayer {
                     }
                 } else {
                     // Normal poll
-                    log.error("POLL: sleeping \(self?.normalPollIntervalSeconds ?? 10, privacy: .public)s (apiTimeRemaining=\(self?.apiTimeRemaining?.description ?? "nil", privacy: .public))")
+                    log.debug("POLL: sleeping \(self?.normalPollIntervalSeconds ?? 10, privacy: .public)s (apiTimeRemaining=\(self?.apiTimeRemaining?.description ?? "nil", privacy: .public))")
                     try? await Task.sleep(for: .seconds(self?.normalPollIntervalSeconds ?? 10))
                     guard !Task.isCancelled, self != nil else { break }
                     await self?.fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
@@ -716,7 +715,7 @@ final class AudioPlayer {
                 updateNowPlaying()
             }
 
-            log.error("ICY: initial stream title seed '\(normalizedTitle, privacy: .public)'")
+            log.debug("ICY: initial stream title seed '\(normalizedTitle, privacy: .public)'")
             await fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)
             return
         }
@@ -745,7 +744,7 @@ final class AudioPlayer {
         currentTrackIdentityToken = "icy:\(logicalKey)"
         updateNowPlaying()
 
-        log.error("ICY: stream title update '\(normalizedTitle, privacy: .public)'")
+        log.debug("ICY: stream title update '\(normalizedTitle, privacy: .public)'")
 
         // Pull full metadata (duration/votes/art/started) as soon as stream title changes.
         await fetchAndUpdateTrack(channelId: channelId, channelName: channelName, network: network)

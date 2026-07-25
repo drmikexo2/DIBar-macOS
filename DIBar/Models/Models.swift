@@ -79,35 +79,23 @@ struct AuthResponse: Codable {
 
 // MARK: - Membership
 
-struct MembershipPlan: Codable, Equatable {
-    let id: Int?
-    let key: String?
-    let name: String?
-}
-
+/// Only the fields the app reads; the auth response carries more (plan,
+/// renewal type, member id) that nothing consumes.
 struct MembershipSubscription: Codable, Equatable {
-    let id: Int?
     let status: String?
     let autoRenew: Bool?
-    let renewalType: Int?
     let trial: Bool?
-    let planId: Int?
     let expiresOn: String?
     let firstTrialAt: String?
     let createdAt: String?
-    let memberId: Int?
     let networkId: Int?
-    let plan: MembershipPlan?
 
     enum CodingKeys: String, CodingKey {
-        case id, status, trial, plan
+        case status, trial
         case autoRenew = "auto_renew"
-        case renewalType = "renewal_type"
-        case planId = "plan_id"
         case expiresOn = "expires_on"
         case firstTrialAt = "first_trial_at"
         case createdAt = "created_at"
-        case memberId = "member_id"
         case networkId = "network_id"
     }
 
@@ -283,19 +271,9 @@ enum TrackArt {
     }
 }
 
-// MARK: - Batch Update Response
+// MARK: - Channel Filters
 
-struct BatchUpdateResponse: Codable {
-    let channelFilters: [ChannelFilter]?
-
-    enum CodingKeys: String, CodingKey {
-        case channelFilters = "channel_filters"
-    }
-}
-
+/// One entry of /channel_filters; only the channel list is consumed.
 struct ChannelFilter: Codable {
-    let id: Int?
-    let key: String?
-    let name: String?
     let channels: [Channel]?
 }

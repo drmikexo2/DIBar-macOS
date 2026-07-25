@@ -82,13 +82,10 @@ final class TrackNotifier: NSObject {
         }
     }
 
-    /// Requests permission; calls back with whether notifications may be shown.
-    func requestAuthorization(completion: @escaping @MainActor (Bool) -> Void) {
-        Task {
-            let center = UNUserNotificationCenter.current()
-            let granted = (try? await center.requestAuthorization(options: [.alert])) ?? false
-            await completion(granted)
-        }
+    /// Requests permission; returns whether notifications may be shown.
+    func requestAuthorization() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        return (try? await center.requestAuthorization(options: [.alert])) ?? false
     }
 
     // MARK: - Tick
