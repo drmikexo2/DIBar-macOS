@@ -205,9 +205,6 @@ extension View {
 struct TrackMetaRow: View {
     @Environment(AppState.self) private var appState
     let track: NowPlaying
-    @State private var now = Date()
-
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         HStack(spacing: 6) {
@@ -264,22 +261,25 @@ struct TrackMetaRow: View {
                     .controlSize(.mini)
                 Text(appState.audioPlayer.isRecovering ? "Reconnecting…" : "Buffering…")
                     .foregroundStyle(.secondary)
-            } else if let elapsed = elapsedSeconds {
+            } else if track.elapsedOverride != nil || track.startedAt != nil {
                 Spacer(minLength: 0)
-                if track.duration > 0 {
-                    let clamped = min(max(elapsed, 0), track.duration)
-                    Text("\(NowPlaying.formatTime(clamped)) / \(NowPlaying.formatTime(track.duration))")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                } else {
-                    Text("\(NowPlaying.formatTime(max(elapsed, 0)))")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                // TimelineView ticks only while this row is on screen, unlike
+                // a connected Timer publisher.
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if let elapsed = elapsedSeconds(at: context.date) {
+                        if track.duration > 0 {
+                            let clamped = min(max(elapsed, 0), track.duration)
+                            Text("\(NowPlaying.formatTime(clamped)) / \(NowPlaying.formatTime(track.duration))")
+                        } else {
+                            Text("\(NowPlaying.formatTime(max(elapsed, 0)))")
+                        }
+                    }
                 }
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
             }
         }
         .font(.system(size: 10))
-        .onReceive(timer) { now = $0 }
         .onAppear { appState.refreshCurrentTrackVote() }
         .onChange(of: track.trackId) { _, _ in
             appState.refreshCurrentTrackVote()
@@ -297,7 +297,7 @@ struct TrackMetaRow: View {
         }
     }
 
-    private var elapsedSeconds: Int? {
+    private func elapsedSeconds(at now: Date) -> Int? {
         if let override = track.elapsedOverride {
             return max(override, 0)
         }

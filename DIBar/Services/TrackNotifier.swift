@@ -132,7 +132,7 @@ final class TrackNotifier: NSObject {
         pendingPost = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
             guard let self, !Task.isCancelled else { return }
-            self.postCurrentTrack()
+            await self.postCurrentTrack()
         }
     }
 
@@ -155,11 +155,11 @@ final class TrackNotifier: NSObject {
                 log.info("announceSwitch: cancelled before post")
                 return
             }
-            self.postSwitchBanner()
+            await self.postSwitchBanner()
         }
     }
 
-    private func postSwitchBanner() {
+    private func postSwitchBanner() async {
         // No popover gate: this is feedback for an explicit user action
         guard let network = player.currentNetwork,
               let channel = player.currentChannel
@@ -177,13 +177,13 @@ final class TrackNotifier: NSObject {
                 .joined(separator: " – ")
         }
         content.sound = nil
-        if let attachment = artworkAttachment() {
+        if let attachment = await artworkAttachment() {
             content.attachments = [attachment]
         }
 
         let center = UNUserNotificationCenter.current()
         center.removeAllDeliveredNotifications()
-        center.add(UNNotificationRequest(
+        try? await center.add(UNNotificationRequest(
             identifier: "switch-\(UUID().uuidString)",
             content: content,
             trigger: nil
@@ -200,7 +200,7 @@ final class TrackNotifier: NSObject {
         return (artist, title)
     }
 
-    private func postCurrentTrack() {
+    private func postCurrentTrack() async {
         guard enabled, player.isPlaying, !popoverIsVisible,
               let track = player.currentTrack
         else { return }
@@ -218,7 +218,7 @@ final class TrackNotifier: NSObject {
         }
         content.sound = nil
 
-        if let attachment = artworkAttachment() {
+        if let attachment = await artworkAttachment() {
             content.attachments = [attachment]
         }
 
@@ -226,29 +226,32 @@ final class TrackNotifier: NSObject {
         // Radio would otherwise pile a notification per song into Notification
         // Center — keep only the current one around.
         center.removeAllDeliveredNotifications()
-        center.add(UNNotificationRequest(
+        try? await center.add(UNNotificationRequest(
             identifier: "track-\(UUID().uuidString)",
             content: content,
             trigger: nil
         ))
     }
 
-    private func artworkAttachment() -> UNNotificationAttachment? {
-        guard let image = player.currentArtImage,
-              let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
-        else { return nil }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dibar-art-\(UUID().uuidString).jpg")
-        do {
-            try jpeg.write(to: url)
-            // The attachment takes ownership of (moves) the file — no cleanup.
-            return try UNNotificationAttachment(identifier: "artwork", url: url)
-        } catch {
-            log.error("artwork attachment failed: \(error.localizedDescription)")
-            return nil
-        }
+    private func artworkAttachment() async -> UNNotificationAttachment? {
+        guard let tiff = player.currentArtImage?.tiffRepresentation else { return nil }
+        // JPEG compression and the temp-file write are the expensive part —
+        // keep them off the main actor.
+        return await Task.detached(priority: .utility) {
+            guard let rep = NSBitmapImageRep(data: tiff),
+                  let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+            else { return nil }
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("dibar-art-\(UUID().uuidString).jpg")
+            do {
+                try jpeg.write(to: url)
+                // The attachment takes ownership of (moves) the file — no cleanup.
+                return try UNNotificationAttachment(identifier: "artwork", url: url)
+            } catch {
+                log.error("artwork attachment failed: \(error.localizedDescription)")
+                return nil
+            }
+        }.value
     }
 }
 
