@@ -169,17 +169,13 @@ struct HistoryWindowView: View {
     /// 26pt cover art with a music-note placeholder for pre-v4 rows and
     /// ICY-only listens that never got art from the API.
     private func artThumbnail(_ url: URL?) -> some View {
-        AsyncImage(url: TrackArt.thumbnailURL(url, pixelSize: 64)) { phase in
-            if let image = phase.image {
-                image.resizable().scaledToFill()
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(.quaternary.opacity(0.5))
-                    Image(systemName: "music.note")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
+        CachedArtImage(url: TrackArt.thumbnailURL(url, pixelSize: 64)) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(.quaternary.opacity(0.5))
+                Image(systemName: "music.note")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
         }
         .frame(width: 26, height: 26)

@@ -657,7 +657,9 @@ final class AudioPlayer {
         )
 
         output.setDelegate(delegate, queue: DispatchQueue(label: "com.dibar.metadata"))
-        output.advanceIntervalForDelegateInvocation = 0.15
+        // ICY titles arrive as timed metadata; 0.5s of delivery latency is
+        // imperceptible and halves the delegate wakeups of the old 0.15s.
+        output.advanceIntervalForDelegateInvocation = 0.5
         item.add(output)
 
         metadataOutput = output
@@ -841,8 +843,7 @@ final class AudioPlayer {
     private func loadArtImage(url: URL?) async -> NSImage? {
         guard let url else { return nil }
         let sized = URL(string: url.absoluteString + "?size=300x300") ?? url
-        guard let (data, _) = try? await URLSession.shared.data(from: sized) else { return nil }
-        return NSImage(data: data)
+        return await ArtCache.image(for: sized)
     }
 
     private func updateNowPlayingArtwork(image: NSImage?) async {
