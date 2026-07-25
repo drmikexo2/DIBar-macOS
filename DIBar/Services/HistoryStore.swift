@@ -214,6 +214,20 @@ final class HistoryStore {
         _ = step(stmt)
     }
 
+    /// Total listening time across all closed segments — the stable base for
+    /// the recorder's cached all-time total (the open segment is added
+    /// arithmetically, so this full-table scan runs once per launch).
+    func closedListenedSeconds() -> TimeInterval {
+        var stmt: OpaquePointer?
+        guard prepare(
+            "SELECT COALESCE(SUM(ended_at - started_at), 0) FROM listen_segments WHERE ended_at IS NOT NULL;",
+            &stmt
+        ) else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return sqlite3_column_double(stmt, 0)
+    }
+
     /// Total listening time for segments started on or after `since`,
     /// counting the open segment up to its last heartbeat.
     func listenedSeconds(since: Date) -> TimeInterval {

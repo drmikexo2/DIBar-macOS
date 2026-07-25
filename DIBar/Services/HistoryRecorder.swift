@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import os
 
 private let log = Logger(subsystem: "com.dibar", category: "HistoryRecorder")
@@ -46,27 +47,65 @@ final class HistoryRecorder {
     private var lastTickAt: Date?
     private var tickCount = 0
     private var reconnectingTicks = 0
+    private var isStarted = false
 
     /// Listening totals, refreshed together every ~15s and on segment close
-    /// so they can never disagree in the UI.
+    /// so they can never disagree in the UI. The all-time total is a cached
+    /// sum of closed segments plus the open segment's elapsed time — the
+    /// full-table scan behind it runs once per launch, not per refresh.
     private(set) var todayListenedSeconds: TimeInterval = 0
     private(set) var allTimeListenedSeconds: TimeInterval = 0
+    private var allTimeClosedBase: TimeInterval = 0
+    #if DEBUG
+    private var verifiedAllTimeBase = false
+    #endif
 
     init(player: AudioPlayer) {
         self.player = player
     }
 
     func start() {
-        guard timer == nil else { return }
+        guard !isStarted else { return }
+        isStarted = true
         if let url = HistoryStore.defaultURL() {
             store = HistoryStore(url: url)
         }
         store?.recoverDanglingSegments()
+        allTimeClosedBase = store?.closedListenedSeconds() ?? 0
         refreshTodayTotal()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+        syncTimerToPlayback()
+        observePlayback()
+    }
+
+    /// The 1s diff tick only matters while the player is playing; when
+    /// playback stops, one final tick closes the open segment through the
+    /// normal path, then the timer goes quiet until the next play.
+    private func observePlayback() {
+        withObservationTracking {
+            _ = player.isPlaying
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncTimerToPlayback()
+                self.observePlayback()
+            }
         }
-        timer?.tolerance = 0.3
+    }
+
+    private func syncTimerToPlayback() {
+        if player.isPlaying {
+            guard timer == nil else { return }
+            lastTickAt = nil // a stale gap from the quiet period is not sleep
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.tick() }
+            }
+            timer?.tolerance = 0.3
+            tick()
+        } else if timer != nil {
+            timer?.invalidate()
+            timer = nil
+            tick()
+        }
     }
 
     func setEnabled(_ isEnabled: Bool) {
@@ -85,8 +124,11 @@ final class HistoryRecorder {
     // MARK: - History window queries
 
     func recentListens(limit: Int = 500) -> [HistoryStore.ListenEntry] {
+        // The history window shows the totals alongside this list; with the
+        // tick quiet while idle, refresh here so day rollover can't go stale.
+        refreshTodayTotal()
         // Fetch extra raw segments since merging shrinks the list
-        Self.mergingAdjacent(store?.recentListens(limit: limit * 2) ?? [])
+        return Self.mergingAdjacent(store?.recentListens(limit: limit * 2) ?? [])
     }
 
     /// Collapse back-to-back segments of the same song on the same station
@@ -289,6 +331,7 @@ final class HistoryRecorder {
             store?.close(id: id, at: date, reason: reason)
             log.info("segment close: \(reason.rawValue, privacy: .public)")
             if let startedAt = openSegmentStartedAt {
+                allTimeClosedBase += date.timeIntervalSince(startedAt)
                 // lastSnapshot still holds the closing segment's metadata —
                 // the tick's defer hasn't run yet on the track-change path.
                 onSegmentClosed?(
@@ -300,6 +343,16 @@ final class HistoryRecorder {
         openSegmentStartedAt = nil
         openSegmentTrackId = nil
         refreshTodayTotal()
+        #if DEBUG
+        if !verifiedAllTimeBase, let store {
+            verifiedAllTimeBase = true
+            let queried = store.listenedSeconds(since: Date(timeIntervalSince1970: 0))
+            assert(
+                abs(queried - allTimeListenedSeconds) < 10,
+                "all-time cache drifted: queried \(queried) vs cached \(allTimeListenedSeconds)"
+            )
+        }
+        #endif
     }
 
     // MARK: - Scrobble queue pass-throughs (the store stays private)
@@ -335,7 +388,8 @@ final class HistoryRecorder {
     private func refreshTodayTotal() {
         guard let store else { return }
         todayListenedSeconds = store.listenedSeconds(since: Calendar.current.startOfDay(for: Date()))
-        allTimeListenedSeconds = store.listenedSeconds(since: Date(timeIntervalSince1970: 0))
+        let openElapsed = openSegmentStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        allTimeListenedSeconds = allTimeClosedBase + openElapsed
     }
 
     private func sanitize(_ text: String?) -> String {
