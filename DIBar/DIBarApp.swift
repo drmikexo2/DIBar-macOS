@@ -33,7 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var panel: FloatingPanel!
     private var panelTopLeft: NSPoint?
-    private var labelTimer: Timer?
     private var lastLabelKey: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -104,13 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        refreshLabel()
-        // The label only changes on track/state transitions; a 1s poll with a
-        // change key keeps it current without observation plumbing.
-        labelTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshLabel() }
-        }
-        labelTimer?.tolerance = 0.3
+        startLabelObservation()
 
         NotificationCenter.default.addObserver(forName: .dibarOpenSettings, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.showSettingsWindow() }
@@ -197,6 +190,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
         appState.trackNotifier.popoverIsVisible = false
+    }
+
+    // Re-render the label whenever any observable state it reads changes;
+    // no polling. The change key still dedups redraws when a tracked write
+    // doesn't alter the rendered text/glyph.
+    private func startLabelObservation() {
+        withObservationTracking {
+            refreshLabel()
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.startLabelObservation() }
+        }
     }
 
     private func refreshLabel() {
