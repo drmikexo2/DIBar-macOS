@@ -82,6 +82,10 @@ extension AppState {
                 memberId = resolvedMemberId
                 Prefs.set(resolvedMemberId, for: .memberId)
             }
+            if let email = profile.resolvedEmail, email != accountEmail {
+                accountEmail = email
+                Prefs.set(email, for: .accountEmail)
+            }
             // Log real network_ids so the Network.networkId mapping can be verified in Console
             let summary = subscriptions
                 .map { "network_id=\($0.networkId?.description ?? "nil") status=\($0.status ?? "?")" }

@@ -64,6 +64,32 @@ final class ModelsTests: XCTestCase {
         )
     }
 
+    // MARK: - AuthResponse email
+
+    func testAuthResponseDecodesTopLevelEmail() throws {
+        let json = Data("""
+        {"listen_key": "abc", "email": "user@example.com"}
+        """.utf8)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: json)
+        XCTAssertEqual(response.resolvedEmail, "user@example.com")
+    }
+
+    func testAuthResponseFallsBackToMemberEmail() throws {
+        let json = Data("""
+        {"listen_key": "abc", "member": {"id": 1, "email": "member@example.com"}}
+        """.utf8)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: json)
+        XCTAssertEqual(response.resolvedEmail, "member@example.com")
+    }
+
+    func testAuthResponseEmailMissingIsNil() throws {
+        let json = Data("""
+        {"listen_key": "abc"}
+        """.utf8)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: json)
+        XCTAssertNil(response.resolvedEmail)
+    }
+
     // MARK: - MembershipSubscription dates
 
     private func subscription(
