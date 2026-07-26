@@ -35,7 +35,7 @@ struct SettingsWindowView: View {
             .padding(.vertical, 4)
             .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 8)
+            .padding(.bottom, 6)
 
             Divider()
 
@@ -72,7 +72,7 @@ struct SettingsWindowView: View {
                     keySeparator("or")
                     KeyCap(systemImage: "playpause.fill")
                 }
-                shortcutRow(label: "prev/next favorite channel") {
+                shortcutRow(label: "prev/next fav channel") {
                     KeyCap("⌃"); KeyCap("⌥"); KeyCap("⌘"); KeyCap("←")
                     keySeparator("/")
                     KeyCap("→")
@@ -166,24 +166,32 @@ struct SettingsWindowView: View {
 
             Divider()
 
-            HStack {
-                HoverTextButton(title: "Logout", tint: .red) {
-                    showLogoutConfirmation = true
+            settingsRow("DI.FM account") {
+                HStack(spacing: 8) {
+                    if let email = appState.accountEmail {
+                        Text(email)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    HoverTextButton(title: "Log Out", tint: .red) {
+                        showLogoutConfirmation = true
+                    }
                 }
-                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
-        .padding(.vertical, 6)
         .frame(width: 320)
-        .alert("Log out of DIBar?", isPresented: $showLogoutConfirmation) {
-            Button("Logout", role: .destructive) {
+        .alert("Log out of DI.FM?", isPresented: $showLogoutConfirmation) {
+            Button("Log Out", role: .destructive) {
                 appState.logout()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You'll need to sign in with your account again to listen.")
+            if let email = appState.accountEmail {
+                Text("You're signed in as \(email). You'll need to sign in again to listen.")
+            } else {
+                Text("You'll need to sign in with your account again to listen.")
+            }
         }
     }
 

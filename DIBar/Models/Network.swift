@@ -1,10 +1,12 @@
 import Foundation
 
 enum Network: String, CaseIterable, Identifiable, Codable {
+    // Declaration order is display order (picker, login grid, site-cycle
+    // hotkeys): alphabetical by displayName.
+    case classicalradio
     case di
     case jazzradio
     case radiotunes
-    case classicalradio
     case rockradio
     case zenradio
 
@@ -14,10 +16,10 @@ enum Network: String, CaseIterable, Identifiable, Codable {
 
     var listenDomain: String {
         switch self {
+        case .classicalradio: return "classicalradio.com"
         case .di:             return "di.fm"
         case .jazzradio:      return "jazzradio.com"
         case .radiotunes:     return "radiotunes.com"
-        case .classicalradio: return "classicalradio.com"
         case .rockradio:      return "rockradio.com"
         case .zenradio:       return "zenradio.com"
         }
@@ -25,10 +27,10 @@ enum Network: String, CaseIterable, Identifiable, Codable {
 
     var shortLabel: String {
         switch self {
-        case .di:             return "DI"
+        case .classicalradio: return "Classical"
+        case .di:             return "DI.FM"
         case .jazzradio:      return "Jazz"
         case .radiotunes:     return "Tunes"
-        case .classicalradio: return "Classical"
         case .rockradio:      return "Rock"
         case .zenradio:       return "Zen"
         }
@@ -36,10 +38,10 @@ enum Network: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
+        case .classicalradio: return "Classical Radio"
         case .di:             return "DI.FM"
         case .jazzradio:      return "Jazz Radio"
         case .radiotunes:     return "Radio Tunes"
-        case .classicalradio: return "Classical Radio"
         case .rockradio:      return "Rock Radio"
         case .zenradio:       return "Zen Radio"
         }

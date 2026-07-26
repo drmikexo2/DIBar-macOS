@@ -6,19 +6,22 @@ private let log = Logger(subsystem: "com.dibar", category: "AppState")
 /// Favorites: server sync (bulk-replace endpoint) with local overrides that
 /// persist per network when sync isn't available.
 extension AppState {
-    var favoriteChannelIds: Set<Int> {
-        networkDataCache[selectedNetwork]?.favoriteChannelIds ?? []
+    func favoriteChannelIds(on network: Network) -> Set<Int> {
+        networkDataCache[network]?.favoriteChannelIds ?? []
     }
 
     var favoritesLoadFailed: Bool {
-        networkDataCache[selectedNetwork]?.favoritesLoadFailed ?? false
+        displayedNetworks.contains { networkDataCache[$0]?.favoritesLoadFailed ?? false }
     }
 
-    var favoriteChannels: [Channel] {
-        let visible = favoriteChannelIds.union(sessionUnfavorited[selectedNetwork] ?? [])
-        return channels
-            .filter { visible.contains($0.id) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    var favoriteChannels: [NetworkChannel] {
+        displayedNetworks.flatMap { network -> [NetworkChannel] in
+            let visible = favoriteChannelIds(on: network).union(sessionUnfavorited[network] ?? [])
+            return (networkDataCache[network]?.channels ?? [])
+                .filter { visible.contains($0.id) }
+                .map { NetworkChannel(network: network, channel: $0) }
+        }
+        .sorted(by: Self.channelOrder)
     }
 
     func loadFavorites(for network: Network? = nil) async {
@@ -42,8 +45,16 @@ extension AppState {
         networkDataCache[target] = data
     }
 
-    func toggleFavorite(_ channel: Channel) {
-        let network = selectedNetwork
+    /// Reloads favorites for exactly the displayed networks whose last load
+    /// failed (the Retry row's action; a no-op for the rest).
+    func retryFailedFavorites() async {
+        for network in displayedNetworks where networkDataCache[network]?.favoritesLoadFailed ?? false {
+            await loadFavorites(for: network)
+        }
+    }
+
+    func toggleFavorite(_ channel: Channel, on network: Network? = nil) {
+        let network = network ?? selectedNetwork
         var data = networkDataCache[network] ?? NetworkData()
         let adding = !data.favoriteChannelIds.contains(channel.id)
         if adding {

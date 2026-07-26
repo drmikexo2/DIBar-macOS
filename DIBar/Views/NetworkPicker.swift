@@ -13,7 +13,7 @@ struct NetworkPicker: View {
             isOpen.toggle()
         } label: {
             HStack(spacing: 3) {
-                Text(appState.selectedNetwork.displayName)
+                Text(appState.allNetworksSelected ? "All Sites" : appState.selectedNetwork.displayName)
                     .font(.system(size: 11, weight: .semibold))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -25,6 +25,19 @@ struct NetworkPicker: View {
         .help("Switch site")
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             DropdownContainer(width: 200) {
+                DropdownRow(action: {
+                    appState.selectAllNetworks()
+                    isOpen = false
+                }) {
+                    DropdownCheckmark(isVisible: appState.allNetworksSelected)
+                    Text("All Sites")
+                        .font(.system(size: 12))
+                    Spacer()
+                }
+
+                Divider()
+                    .padding(.vertical, 4)
+
                 ForEach(Network.allCases) { network in
                     NetworkRow(network: network) {
                         appState.selectNetwork(network)
@@ -47,7 +60,7 @@ private struct NetworkRow: View {
 
     var body: some View {
         DropdownRow(action: action) {
-            DropdownCheckmark(isVisible: network == appState.selectedNetwork)
+            DropdownCheckmark(isVisible: !appState.allNetworksSelected && network == appState.selectedNetwork)
 
             Text(network.displayName)
                 .font(.system(size: 12))

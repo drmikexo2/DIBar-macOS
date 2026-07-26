@@ -30,6 +30,15 @@ struct RecentStation: Codable, Identifiable, Equatable {
     var id: String { "\(network.rawValue)-\(channelId)" }
 }
 
+/// A channel tagged with its network — needed wherever channels from several
+/// networks appear in one list (plain channel ids can collide across networks).
+struct NetworkChannel: Identifiable, Hashable {
+    let network: Network
+    let channel: Channel
+
+    var id: String { "\(network.rawValue)-\(channel.id)" }
+}
+
 struct Channel: Codable, Identifiable, Hashable {
     let id: Int
     let key: String
@@ -56,11 +65,13 @@ struct AuthResponse: Codable {
     let id: Int?
     let memberId: Int?
     let apiKey: String?
+    let email: String?
     let member: AuthMember?
     let subscriptions: [MembershipSubscription]?
 
     struct AuthMember: Codable {
         let id: Int?
+        let email: String?
     }
 
     enum CodingKeys: String, CodingKey {
@@ -68,12 +79,17 @@ struct AuthResponse: Codable {
         case id
         case memberId = "member_id"
         case apiKey = "api_key"
+        case email
         case member
         case subscriptions
     }
 
     var resolvedMemberId: Int? {
         id ?? memberId ?? member?.id
+    }
+
+    var resolvedEmail: String? {
+        email ?? member?.email
     }
 }
 

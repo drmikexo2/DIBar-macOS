@@ -22,9 +22,13 @@ final class AppState {
     var listenKey: String?
     var apiKey: String?
     var memberId: Int?
+    var accountEmail: String?
 
     // Network
     var selectedNetwork: Network = .di
+    /// True when the picker is on "All Sites". selectedNetwork keeps the last
+    /// concrete network for hotkeys, membership, and station restore.
+    var allNetworksSelected: Bool = false
     var playingNetwork: Network?
     var networkDataCache: [Network: NetworkData] = [:]
 
@@ -125,6 +129,8 @@ final class AppState {
 
     // UI
     var isLoading: Bool = false
+    /// In-flight loadChannels calls; see the counter comment there.
+    @ObservationIgnored private var channelLoadCount = 0
     var errorMessage: String?
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
@@ -161,10 +167,38 @@ final class AppState {
         networkDataCache[selectedNetwork]?.channels ?? []
     }
 
-    var filteredChannels: [Channel] {
-        let sorted = channels.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    /// The networks the channel list currently shows.
+    var displayedNetworks: [Network] {
+        allNetworksSelected ? Network.allCases : [selectedNetwork]
+    }
+
+    /// Gates the loading placeholder: false only when nothing is showable yet.
+    var hasAnyDisplayedChannels: Bool {
+        displayedNetworks.contains { networkDataCache[$0]?.channels.isEmpty == false }
+    }
+
+    var filteredChannels: [NetworkChannel] {
+        Self.filteredChannels(cache: networkDataCache, networks: displayedNetworks, searchText: searchText)
+    }
+
+    /// Pure so tests can exercise the merge/sort/filter directly.
+    static func filteredChannels(
+        cache: [Network: NetworkData], networks: [Network], searchText: String
+    ) -> [NetworkChannel] {
+        let all = networks.flatMap { network in
+            (cache[network]?.channels ?? []).map { NetworkChannel(network: network, channel: $0) }
+        }
+        let sorted = all.sorted(by: Self.channelOrder)
         if searchText.isEmpty { return sorted }
-        return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return sorted.filter { $0.channel.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    /// Alphabetical by channel name; same-named channels from different
+    /// networks tie-break on network name so order is stable.
+    static func channelOrder(_ lhs: NetworkChannel, _ rhs: NetworkChannel) -> Bool {
+        let cmp = lhs.channel.name.localizedCaseInsensitiveCompare(rhs.channel.name)
+        if cmp != .orderedSame { return cmp == .orderedAscending }
+        return lhs.network.displayName < rhs.network.displayName
     }
 
     // MARK: - Lifecycle
@@ -246,11 +280,36 @@ final class AppState {
     /// awaited load from racing selectNetwork's fire-and-forget one).
     @discardableResult
     private func applyNetworkSelection(_ network: Network) -> Bool {
-        guard network != selectedNetwork else { return false }
+        // The second clause matters: while in All-Sites mode, picking the
+        // remembered network must still exit All mode, not no-op.
+        guard network != selectedNetwork || allNetworksSelected else { return false }
+        allNetworksSelected = false
+        Prefs.set(false, for: .allNetworksSelected)
         selectedNetwork = network
         searchText = ""
         Prefs.set(network.rawValue, for: .selectedNetwork)
         return true
+    }
+
+    /// Switches the picker to "All Sites": every network's channels and
+    /// favorites merged into one list.
+    func selectAllNetworks() {
+        guard !allNetworksSelected else { return }
+        allNetworksSelected = true
+        searchText = ""
+        Prefs.set(true, for: .allNetworksSelected)
+        Task {
+            await loadAllNetworks()
+        }
+    }
+
+    /// Fills the cache for any network not yet loaded, in parallel.
+    func loadAllNetworks() async {
+        await withTaskGroup(of: Void.self) { group in
+            for network in Network.allCases where networkDataCache[network]?.isLoaded != true {
+                group.addTask { await self.loadChannels(for: network) }
+            }
+        }
     }
 
     // MARK: - Data Loading
@@ -258,8 +317,15 @@ final class AppState {
     func loadChannels(for network: Network? = nil, restoreStation: Bool = false) async {
         let target = network ?? selectedNetwork
         guard listenKey != nil else { return }
+        // Counted, not toggled: loadAllNetworks runs these concurrently and
+        // the first finisher must not clear the flag for the rest. (login()'s
+        // direct isLoading writes never overlap channel loads.)
+        channelLoadCount += 1
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            channelLoadCount -= 1
+            if channelLoadCount == 0 { isLoading = false }
+        }
 
         do {
             async let channelsFetch = DIClient.fetchChannels(network: target)
@@ -291,7 +357,11 @@ final class AppState {
         playChannel(channel, on: selectedNetwork)
     }
 
-    private func playChannel(_ channel: Channel, on network: Network) {
+    func playChannel(_ item: NetworkChannel) {
+        playChannel(item.channel, on: item.network)
+    }
+
+    func playChannel(_ channel: Channel, on network: Network) {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: network)
         else { return }
@@ -379,18 +449,21 @@ final class AppState {
     /// entries (station gone from the channel list) self-heal by dropping out.
     func playRecentStation(_ entry: RecentStation) {
         Task {
-            if selectedNetwork != entry.network {
+            // In All-Sites mode the entry is already on screen; don't yank the
+            // picker to its network.
+            if !allNetworksSelected && selectedNetwork != entry.network {
                 selectNetwork(entry.network)
             }
             if networkDataCache[entry.network]?.isLoaded != true {
                 await loadChannels(for: entry.network)
             }
-            guard let channel = channels.first(where: { $0.id == entry.channelId }) else {
+            guard let channel = networkDataCache[entry.network]?.channels
+                .first(where: { $0.id == entry.channelId }) else {
                 log.warning("playRecentStation: '\(entry.name, privacy: .public)' no longer on \(entry.network.rawValue)")
                 recentStationsStore.remove(id: entry.id)
                 return
             }
-            playChannel(channel)
+            playChannel(channel, on: entry.network)
         }
     }
 

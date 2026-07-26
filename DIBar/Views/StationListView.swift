@@ -56,7 +56,7 @@ struct StationListView: View {
             .padding(.vertical, 6)
             .background(.quaternary.opacity(0.5))
 
-            if appState.isLoading && appState.channels.isEmpty {
+            if appState.isLoading && !appState.hasAnyDisplayedChannels {
                 VStack {
                     ProgressView()
                         .controlSize(.small)
@@ -84,16 +84,16 @@ struct StationListView: View {
                                     if appState.favoritesLoadFailed && appState.favoriteChannels.isEmpty {
                                         favoritesFailedRow
                                     } else {
-                                        ForEach(appState.favoriteChannels) { channel in
-                                            ChannelRow(channel: channel)
-                                                .id("fav-\(channel.id)")
+                                        ForEach(appState.favoriteChannels) { item in
+                                            ChannelRow(item: item, showsNetwork: appState.allNetworksSelected)
+                                                .id("fav-\(item.id)")
                                         }
                                     }
                                     Divider()
                                         .padding(.top, 8)
                                 } header: {
                                     SectionHeader(
-                                        title: "Favorite Channels",
+                                        title: favoritesTitle,
                                         showsSyncWarning: !appState.favoritesSyncAvailable
                                     )
                                 }
@@ -111,7 +111,7 @@ struct StationListView: View {
                                         .padding(.top, 8)
                                 } header: {
                                     SectionHeader(
-                                        title: "Recently Played Channels",
+                                        title: "My Recently Played Channels",
                                         isExpanded: $recentExpanded
                                     )
                                 }
@@ -124,7 +124,7 @@ struct StationListView: View {
                                     }
                                 } header: {
                                     SectionHeader(
-                                        title: "All Channels (\(appState.filteredChannels.count))",
+                                        title: allChannelsTitle,
                                         isExpanded: $allStationsExpanded
                                     )
                                 }
@@ -137,14 +137,16 @@ struct StationListView: View {
                     .onAppear {
                         searchFocused = true
                         if let playingId = appState.audioPlayer.currentChannel?.id,
-                           appState.playingNetwork == appState.selectedNetwork {
+                           let playingNetwork = appState.playingNetwork,
+                           appState.displayedNetworks.contains(playingNetwork) {
+                            let itemId = "\(playingNetwork.rawValue)-\(playingId)"
                             // A playing favorite is shown in its Favorites row
                             // at the top, not its duplicate down in All Stations
                             if appState.searchText.isEmpty,
-                               appState.favoriteChannels.contains(where: { $0.id == playingId }) {
-                                proxy.scrollTo("fav-\(playingId)", anchor: .center)
+                               appState.favoriteChannels.contains(where: { $0.id == itemId }) {
+                                proxy.scrollTo("fav-\(itemId)", anchor: .center)
                             } else {
-                                proxy.scrollTo("all-\(playingId)", anchor: .center)
+                                proxy.scrollTo("all-\(itemId)", anchor: .center)
                             }
                         }
                     }
@@ -170,6 +172,17 @@ struct StationListView: View {
         }
     }
 
+    private var favoritesTitle: String {
+        appState.allNetworksSelected
+            ? "My Favorites"
+            : "My \(appState.selectedNetwork.displayName) Favorites"
+    }
+
+    private var allChannelsTitle: String {
+        let scope = appState.allNetworksSelected ? "" : "\(appState.selectedNetwork.displayName) "
+        return "All \(scope)Channels (\(appState.filteredChannels.count))"
+    }
+
     private func moveHighlight(by delta: Int) {
         let count = appState.filteredChannels.count
         guard count > 0 else { return }
@@ -180,9 +193,9 @@ struct StationListView: View {
     }
 
     private var allChannelRows: some View {
-        ForEach(Array(appState.filteredChannels.enumerated()), id: \.element.id) { index, channel in
-            ChannelRow(channel: channel, isHighlighted: index == highlightedIndex)
-                .id("all-\(channel.id)")
+        ForEach(Array(appState.filteredChannels.enumerated()), id: \.element.id) { index, item in
+            ChannelRow(item: item, isHighlighted: index == highlightedIndex, showsNetwork: appState.allNetworksSelected)
+                .id("all-\(item.id)")
         }
     }
 
@@ -192,7 +205,7 @@ struct StationListView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Button("Retry") {
-                Task { await appState.loadFavorites() }
+                Task { await appState.retryFailedFavorites() }
             }
             .buttonStyle(.plain)
             .font(.system(size: 11, weight: .semibold))
@@ -207,26 +220,33 @@ struct StationListView: View {
 
 struct ChannelRow: View {
     @Environment(AppState.self) private var appState
-    let channel: Channel
+    let item: NetworkChannel
     var isHighlighted: Bool = false
+    /// All-Sites mode: append the "· Jazz"-style network suffix.
+    var showsNetwork: Bool = false
     @State private var isHovered = false
 
     private var isPlaying: Bool {
-        appState.audioPlayer.currentChannel?.id == channel.id
-            && appState.playingNetwork == appState.selectedNetwork
+        appState.audioPlayer.currentChannel?.id == item.channel.id
+            && appState.playingNetwork == item.network
     }
 
     private var isFavorite: Bool {
-        appState.favoriteChannelIds.contains(channel.id)
+        appState.favoriteChannelIds(on: item.network).contains(item.channel.id)
     }
 
     var body: some View {
-        Button(action: { appState.playChannel(channel) }) {
+        Button(action: { appState.playChannel(item) }) {
             HStack(spacing: 4) {
-                Text(channel.name)
+                Text(item.channel.name)
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
                     .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+                if showsNetwork {
+                    Text("· \(item.network.shortLabel)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
 
                 // Fixed-width slots keep the star column aligned on every row
@@ -234,7 +254,7 @@ struct ChannelRow: View {
 
                 Group {
                     if isFavorite || isHovered {
-                        Button(action: { appState.toggleFavorite(channel) }) {
+                        Button(action: { appState.toggleFavorite(item.channel, on: item.network) }) {
                             Image(systemName: isFavorite ? "star.fill" : "star")
                                 .font(.caption2)
                                 .foregroundStyle(isFavorite ? AnyShapeStyle(.yellow.opacity(0.65)) : AnyShapeStyle(.secondary))
@@ -283,7 +303,7 @@ struct RecentRow: View {
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
                     .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
-                if entry.network != appState.selectedNetwork {
+                if appState.allNetworksSelected || entry.network != appState.selectedNetwork {
                     Text("· \(entry.network.shortLabel)")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
@@ -319,6 +339,10 @@ struct SectionHeader: View {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
+                // Longest titles ("ALL CLASSICAL RADIO CHANNELS (140)") fit,
+                // but never let a sticky header wrap to two lines
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
 
             if showsSyncWarning {
                 Image(systemName: "info.circle")
@@ -347,9 +371,10 @@ struct SectionHeader: View {
         .padding(.trailing, 11)
         .padding(.top, 10)
         .padding(.bottom, 4)
-        // Full width regardless of chevron presence, with an opaque-ish
-        // backing so rows don't bleed through while pinned
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
+        // Behind-window sampling makes this indistinguishable from the panel
+        // base at rest, yet it occludes rows sliding under a pinned header —
+        // so no pin detection is needed.
+        .background(PanelMaterial())
     }
 }

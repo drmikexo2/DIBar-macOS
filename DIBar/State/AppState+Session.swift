@@ -36,16 +36,18 @@ extension AppState {
 
         recentStationsStore.load()
 
-        // Restore last selected network
+        // Restore last selected network (and the All-Sites overlay flag)
         if let raw = Prefs.string(.selectedNetwork), let net = Network(rawValue: raw) {
             selectedNetwork = net
             log.info("bootstrap: restored network=\(net.rawValue)")
         }
+        allNetworksSelected = Prefs.bool(.allNetworksSelected, default: false)
 
         log.info("bootstrap: checking stored credentials")
         if let key = Prefs.string(.listenKey) {
             listenKey = key
             apiKey = Prefs.string(.apiKey)
+            accountEmail = Prefs.string(.accountEmail)
             if let id = Prefs.int(.memberId) {
                 memberId = id
                 log.info("bootstrap: found stored memberId=\(id)")
@@ -60,6 +62,11 @@ extension AppState {
                 _ = await (channelsLoad, membershipLoad)
             } else {
                 await loadChannels(for: selectedNetwork, restoreStation: true)
+            }
+            // Station restore above stays selectedNetwork-scoped; the other
+            // networks just fill in behind it.
+            if allNetworksSelected {
+                Task { await loadAllNetworks() }
             }
         } else {
             log.info("bootstrap: no stored listen_key")
@@ -88,6 +95,8 @@ extension AppState {
             }
             listenKey = response.listenKey
             apiKey = response.apiKey
+            accountEmail = response.resolvedEmail ?? email
+            Prefs.set(accountEmail, for: .accountEmail)
             subscriptions = response.subscriptions ?? []
             isLoggedIn = true
             await loadChannels(for: selectedNetwork)
@@ -104,7 +113,9 @@ extension AppState {
         Prefs.set(nil, for: .listenKey)
         Prefs.set(nil, for: .apiKey)
         Prefs.set(nil, for: .memberId)
+        Prefs.set(nil, for: .accountEmail)
         Prefs.set(nil, for: .selectedNetwork)
+        Prefs.set(nil, for: .allNetworksSelected)
         recentStationsStore.clear()
         for network in Network.allCases {
             Prefs.set(nil, for: .lastStationId, network: network)
@@ -114,12 +125,14 @@ extension AppState {
         listenKey = nil
         apiKey = nil
         memberId = nil
+        accountEmail = nil
         subscriptions = []
         isLoggedIn = false
         networkDataCache = [:]
         sessionUnfavorited = [:]
         playingNetwork = nil
         selectedNetwork = .di
+        allNetworksSelected = false
         searchText = ""
         errorMessage = nil
     }

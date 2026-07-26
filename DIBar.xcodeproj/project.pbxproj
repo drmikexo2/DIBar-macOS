@@ -50,6 +50,7 @@
 		A10000010000000000000024 /* HistoryMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000024 /* HistoryMergingTests.swift */; };
 		A10000010000000000000025 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* ModelsTests.swift */; };
 		A10000010000000000000026 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000026 /* HistoryStoreTests.swift */; };
+		A10000010000000000000031 /* ChannelListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* ChannelListTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -99,6 +100,7 @@
 		A20000010000000000000024 /* HistoryMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryMergingTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000025 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		A20000010000000000000026 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
+		A20000010000000000000031 /* ChannelListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListTests.swift; sourceTree = "<group>"; };
 		A2000001000000000000002E /* DIBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DIBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -136,6 +138,7 @@
 				A20000010000000000000024 /* HistoryMergingTests.swift */,
 				A20000010000000000000025 /* ModelsTests.swift */,
 				A20000010000000000000026 /* HistoryStoreTests.swift */,
+				A20000010000000000000031 /* ChannelListTests.swift */,
 			);
 			path = DIBarTests;
 			sourceTree = "<group>";
@@ -378,6 +381,7 @@
 				A10000010000000000000024 /* HistoryMergingTests.swift in Sources */,
 				A10000010000000000000025 /* ModelsTests.swift in Sources */,
 				A10000010000000000000026 /* HistoryStoreTests.swift in Sources */,
+				A10000010000000000000031 /* ChannelListTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

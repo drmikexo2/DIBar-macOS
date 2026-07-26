@@ -14,7 +14,9 @@ enum Prefs {
         case listenKey = "listen_key"
         case apiKey = "api_key"
         case memberId = "member_id"
+        case accountEmail = "account_email"
         case selectedNetwork = "selected_network"
+        case allNetworksSelected = "all_networks_selected"
         case recentStations = "recent_stations"
         case quality
         case saveHistory = "save_history"
