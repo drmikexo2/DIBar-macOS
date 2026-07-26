@@ -27,6 +27,44 @@ private final class FloatingPanel: NSPanel {
     }
 }
 
+/// Behind-window material shared by the panel base and the pinned section
+/// headers: it samples only content behind the *window*, so a header strip
+/// occludes rows sliding under it yet renders pixel-identical to the base
+/// layer at the same screen rect — no double-tinted stripe like stacked
+/// SwiftUI materials produce.
+struct PanelMaterial: NSViewRepresentable {
+    var cornerRadius: CGFloat = 0
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        if cornerRadius > 0 {
+            view.maskImage = .cornerMask(radius: cornerRadius)
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+private extension NSImage {
+    /// Stretchable rounded-rect mask; shapes both the blur region and the
+    /// window shadow (the same mechanism NSPopover uses).
+    static func cornerMask(radius: CGFloat) -> NSImage {
+        let edge = 2 * radius + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // Internal (not private) so DIBarApp+Debug.swift can drive the app.
@@ -65,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingController(
             rootView: MenuBarView()
                 .environment(appState)
-                .background(.regularMaterial)
+                .background(PanelMaterial(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         )
         hosting.sizingOptions = .preferredContentSize
