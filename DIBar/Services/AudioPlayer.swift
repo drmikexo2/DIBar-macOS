@@ -73,6 +73,7 @@ final class AudioPlayer {
     private var autoResumeOnNetworkReturn = false
     private var lastItemError: String?
     private var pausedAt: Date?
+    private var pauseTeardownTimer: Timer?
     private var itemNotificationTokens: [NSObjectProtocol] = []
     private var recovery: PlaybackRecovery?
     private static let reconnectBackoff: [Double] = [1, 2, 4, 8, 15, 30, 30, 30]
@@ -95,6 +96,8 @@ final class AudioPlayer {
         lastPlayArgs = (channel, streamURL, network)
         hasPlayedThisSession = false
         pausedAt = nil
+        pauseTeardownTimer?.invalidate()
+        pauseTeardownTimer = nil
 
         // Stop existing polling and observation
         trackPollTask?.cancel()
@@ -201,13 +204,39 @@ final class AudioPlayer {
         phase = .paused
         trackPollTask?.cancel()
         trackPollTask = nil
+        // A paused AVPlayer keeps downloading the live stream, but resume()
+        // discards the buffer and restarts anyway once the pause passes 60s —
+        // so after that point, drop the item and stop paying for dead bytes.
+        pauseTeardownTimer?.invalidate()
+        pauseTeardownTimer = Timer.scheduledTimer(withTimeInterval: 61, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.tearDownPausedStream() }
+        }
+        pauseTeardownTimer?.tolerance = 5
         updateNowPlaying()
+    }
+
+    /// Releases the stream pipeline of a long-paused player. UI state
+    /// (channel, track, artwork, paused phase) stays intact; resume() sees
+    /// the missing item and takes its existing restart path.
+    private func tearDownPausedStream() {
+        pauseTeardownTimer = nil
+        guard phase == .paused, !isPlaying else { return }
+        statusObservation?.invalidate()
+        statusObservation = nil
+        removeItemNotificationObservers()
+        metadataOutput = nil
+        metadataDelegate = nil
+        player?.replaceCurrentItem(with: nil)
+        log.info("paused >60s: released stream item")
     }
 
     func resume() {
         guard currentChannel != nil else { return }
+        pauseTeardownTimer?.invalidate()
+        pauseTeardownTimer = nil
         // A live buffer paused for long (or a dead item) is stale or badly
         // behind — restart the stream instead of resuming into silence.
+        // (Past 60s the item may already be gone via tearDownPausedStream.)
         let pausedTooLong = pausedAt.map { Date().timeIntervalSince($0) > 60 } ?? false
         if let args = lastPlayArgs,
            pausedTooLong || player?.currentItem == nil || player?.currentItem?.status == .failed {
@@ -235,6 +264,8 @@ final class AudioPlayer {
         lastPlayArgs = nil
         lastItemError = nil
         pausedAt = nil
+        pauseTeardownTimer?.invalidate()
+        pauseTeardownTimer = nil
         hasPlayedThisSession = false
         phase = .idle
         trackPollTask?.cancel()
