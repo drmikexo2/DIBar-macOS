@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3
+
+### Faster windows
+
+- Settings and Listening History now appear immediately from the menu bar instead of sometimes waiting several seconds for app activation.
+- The launch-at-login status and registration work now run away from the main thread, so macOS service lookups cannot stall the Settings window.
+
+### Navigation and playback
+
+- Recently Played rows now include favorite controls and stay synchronized with each site's server-side favorites.
+- Command-L jumps to the currently playing channel and expands All Channels when needed.
+- The playing indicator and accent colors are clearer, including a more polished speaker animation.
+- Fixed the elapsed counter getting stuck at 0:00 when stream metadata advances before the DI.FM API catches up.
+
 ## 1.2
 
 ### All Sites

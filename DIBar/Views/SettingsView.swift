@@ -5,7 +5,8 @@ import ServiceManagement
 struct SettingsWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLogin: Bool?
+    @State private var isUpdatingLaunchAtLogin = false
     @State private var showLogoutConfirmation = false
 
     var body: some View {
@@ -40,21 +41,16 @@ struct SettingsWindowView: View {
             Divider()
 
             settingsRow("Launch at login") {
-                Toggle("", isOn: $launchAtLogin)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        do {
-                            if enabled {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
-                            }
-                        } catch {
-                            // Revert the toggle if the system call failed
-                            launchAtLogin = SMAppService.mainApp.status == .enabled
-                        }
-                    }
+                if launchAtLogin == nil {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 16, height: 16)
+                } else {
+                    Toggle("", isOn: launchAtLoginBinding)
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                        .disabled(isUpdatingLaunchAtLogin)
+                }
             }
 
             Divider()
@@ -181,6 +177,10 @@ struct SettingsWindowView: View {
             }
         }
         .frame(width: 320)
+        .task {
+            guard launchAtLogin == nil else { return }
+            launchAtLogin = await Self.readLaunchAtLoginStatus()
+        }
         .alert("Log out of DI.FM?", isPresented: $showLogoutConfirmation) {
             Button("Log Out", role: .destructive) {
                 appState.logout()
@@ -193,6 +193,44 @@ struct SettingsWindowView: View {
                 Text("You'll need to sign in with your account again to listen.")
             }
         }
+    }
+
+    // MARK: - Launch at Login
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin ?? false },
+            set: updateLaunchAtLogin
+        )
+    }
+
+    private func updateLaunchAtLogin(_ enabled: Bool) {
+        guard !isUpdatingLaunchAtLogin else { return }
+        launchAtLogin = enabled
+        isUpdatingLaunchAtLogin = true
+
+        Task {
+            let resolved = await Task.detached(priority: .userInitiated) {
+                do {
+                    if enabled {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                    return enabled
+                } catch {
+                    return SMAppService.mainApp.status == .enabled
+                }
+            }.value
+            launchAtLogin = resolved
+            isUpdatingLaunchAtLogin = false
+        }
+    }
+
+    private static func readLaunchAtLoginStatus() async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            SMAppService.mainApp.status == .enabled
+        }.value
     }
 
     // MARK: - Scrobbling

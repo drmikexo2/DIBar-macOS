@@ -101,7 +101,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
 
         let hosting = NSHostingController(
-            rootView: MenuBarView()
+            rootView: MenuBarView(
+                onOpenSettings: { [weak self] in
+                    self?.showSettingsWindow()
+                },
+                onOpenHistory: { [weak self] in
+                    self?.showHistoryWindow()
+                }
+            )
                 .environment(appState)
                 .background(PanelMaterial(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -143,13 +150,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         startLabelObservation()
 
-        NotificationCenter.default.addObserver(forName: .dibarOpenSettings, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.showSettingsWindow() }
-        }
-        NotificationCenter.default.addObserver(forName: .dibarOpenHistory, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.showHistoryWindow() }
-        }
-
         setupDebugNotifications()
     }
 
@@ -166,11 +166,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "DIBar Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.center()
             settingsWindow = window
         }
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        settingsWindow?.center()
-        NSApp.activate(ignoringOtherApps: true)
+        presentAuxiliaryWindow(settingsWindow!)
     }
 
     func showHistoryWindow() {
@@ -182,11 +181,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.styleMask = [.titled, .closable, .resizable]
             window.isReleasedWhenClosed = false
             window.setContentSize(NSSize(width: 460, height: 480))
+            window.center()
             historyWindow = window
         }
-        historyWindow?.makeKeyAndOrderFront(nil)
-        historyWindow?.center()
-        NSApp.activate(ignoringOtherApps: true)
+        presentAuxiliaryWindow(historyWindow!)
+    }
+
+    /// The status panel is already key and DIBar is active for normal clicks.
+    /// Keep that activation continuous: promote the destination first, then
+    /// remove the panel. Debug/external invocations may need explicit
+    /// activation, but it must happen before ordering the destination window.
+    private func presentAuxiliaryWindow(_ window: NSWindow) {
+        if NSApp.isActive {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            // Activation of an LSUIElement app can complete seconds later.
+            // This explicit user/debug request should still become visible
+            // immediately; it will become key as activation catches up.
+            window.orderFrontRegardless()
+            window.makeKey()
+        }
+        if panel.isVisible {
+            closePanel()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

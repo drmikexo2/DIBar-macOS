@@ -3,6 +3,8 @@ import SwiftUI
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    let onOpenSettings: () -> Void
+    let onOpenHistory: () -> Void
 
     var body: some View {
         Group {
@@ -39,10 +41,10 @@ struct MenuBarView: View {
     private var footer: some View {
         HStack(spacing: 16) {
             HoverTextButton(title: "Settings…") {
-                NotificationCenter.default.post(name: .dibarOpenSettings, object: nil)
+                onOpenSettings()
             }
             HoverTextButton(title: "History…") {
-                NotificationCenter.default.post(name: .dibarOpenHistory, object: nil)
+                onOpenHistory()
             }
             Spacer()
             HoverTextButton(title: "Quit") {
@@ -78,9 +80,4 @@ struct HoverTextButton: View {
         }
         return isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)
     }
-}
-
-extension Notification.Name {
-    static let dibarOpenSettings = Notification.Name("com.dibar.openSettings")
-    static let dibarOpenHistory = Notification.Name("com.dibar.openHistory")
 }
