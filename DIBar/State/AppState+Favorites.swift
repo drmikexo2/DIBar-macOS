@@ -54,21 +54,26 @@ extension AppState {
     }
 
     func toggleFavorite(_ channel: Channel, on network: Network? = nil) {
+        toggleFavorite(channelId: channel.id, name: channel.name, on: network)
+    }
+
+    /// Id-based variant for rows that don't hold a full Channel (recents).
+    func toggleFavorite(channelId: Int, name: String, on network: Network? = nil) {
         let network = network ?? selectedNetwork
         var data = networkDataCache[network] ?? NetworkData()
-        let adding = !data.favoriteChannelIds.contains(channel.id)
+        let adding = !data.favoriteChannelIds.contains(channelId)
         if adding {
-            data.favoriteChannelIds.insert(channel.id)
-            sessionUnfavorited[network]?.remove(channel.id)
+            data.favoriteChannelIds.insert(channelId)
+            sessionUnfavorited[network]?.remove(channelId)
         } else {
-            data.favoriteChannelIds.remove(channel.id)
-            sessionUnfavorited[network, default: []].insert(channel.id)
+            data.favoriteChannelIds.remove(channelId)
+            sessionUnfavorited[network, default: []].insert(channelId)
         }
         networkDataCache[network] = data
-        log.info("toggleFavorite(\(network.rawValue)): \(adding ? "add" : "remove") \(channel.name)")
+        log.info("toggleFavorite(\(network.rawValue)): \(adding ? "add" : "remove") \(name)")
 
         guard favoritesSyncAvailable, let ak = apiKey, let mid = memberId else {
-            recordLocalFavoriteOverride(channelId: channel.id, adding: adding, network: network)
+            recordLocalFavoriteOverride(channelId: channelId, adding: adding, network: network)
             return
         }
 
@@ -78,9 +83,9 @@ extension AppState {
                 // this one change, and write the merged result back.
                 var ids = try await DIClient.fetchFavoritesOrdered(apiKey: ak, network: network)
                 if adding {
-                    if !ids.contains(channel.id) { ids.append(channel.id) }
+                    if !ids.contains(channelId) { ids.append(channelId) }
                 } else {
-                    ids.removeAll { $0 == channel.id }
+                    ids.removeAll { $0 == channelId }
                 }
                 try await DIClient.setFavorites(channelIds: ids, memberId: mid, apiKey: ak, network: network)
                 clearLocalFavoriteOverrides(for: network)
@@ -89,7 +94,7 @@ extension AppState {
                 if case DIClientError.httpError(let code) = error, code == 404 || code == 405 {
                     favoritesSyncAvailable = false
                 }
-                recordLocalFavoriteOverride(channelId: channel.id, adding: adding, network: network)
+                recordLocalFavoriteOverride(channelId: channelId, adding: adding, network: network)
                 log.error("toggleFavorite(\(network.rawValue)) sync failed: \(error.localizedDescription)")
             }
         }

@@ -107,6 +107,10 @@ struct StationListView: View {
                                             RecentRow(entry: entry)
                                         }
                                     }
+                                    // So stars on cross-network recents reflect
+                                    // server state even before that network loads.
+                                    Color.clear.frame(height: 0)
+                                        .task { await appState.loadFavoritesForRecents() }
                                     Divider()
                                         .padding(.top, 8)
                                 } header: {
@@ -136,20 +140,14 @@ struct StationListView: View {
                     .frame(height: appState.artworkExpanded ? 180 : 280)
                     .onAppear {
                         searchFocused = true
-                        if let playingId = appState.audioPlayer.currentChannel?.id,
-                           let playingNetwork = appState.playingNetwork,
-                           appState.displayedNetworks.contains(playingNetwork) {
-                            let itemId = "\(playingNetwork.rawValue)-\(playingId)"
-                            // A playing favorite is shown in its Favorites row
-                            // at the top, not its duplicate down in All Stations
-                            if appState.searchText.isEmpty,
-                               appState.favoriteChannels.contains(where: { $0.id == itemId }) {
-                                proxy.scrollTo("fav-\(itemId)", anchor: .center)
-                            } else {
-                                proxy.scrollTo("all-\(itemId)", anchor: .center)
-                            }
-                        }
+                        scrollToPlaying(proxy: proxy)
                     }
+                    .background(
+                        // Cmd+L jumps to the playing station, as in iTunes
+                        Button("") { scrollToPlaying(proxy: proxy, animated: true) }
+                            .keyboardShortcut("l", modifiers: .command)
+                            .opacity(0)
+                    )
                     .onChange(of: highlightedIndex) { _, index in
                         if let index, appState.filteredChannels.indices.contains(index) {
                             proxy.scrollTo("all-\(appState.filteredChannels[index].id)", anchor: .center)
@@ -181,6 +179,33 @@ struct StationListView: View {
     private var allChannelsTitle: String {
         let scope = appState.allNetworksSelected ? "" : "\(appState.selectedNetwork.displayName) "
         return "All \(scope)Channels (\(appState.filteredChannels.count))"
+    }
+
+    /// Scrolls to the currently playing station. A playing favorite is shown
+    /// in its Favorites row at the top, not its duplicate down in All
+    /// Stations; a collapsed All Stations section is expanded first, with the
+    /// scroll deferred a runloop so the lazy rows exist to scroll to.
+    private func scrollToPlaying(proxy: ScrollViewProxy, animated: Bool = false) {
+        guard let playingId = appState.audioPlayer.currentChannel?.id,
+              let playingNetwork = appState.playingNetwork,
+              appState.displayedNetworks.contains(playingNetwork) else { return }
+        let itemId = "\(playingNetwork.rawValue)-\(playingId)"
+        let scroll: (String) -> Void = { target in
+            if animated {
+                withAnimation { proxy.scrollTo(target, anchor: .center) }
+            } else {
+                proxy.scrollTo(target, anchor: .center)
+            }
+        }
+        if appState.searchText.isEmpty,
+           appState.favoriteChannels.contains(where: { $0.id == itemId }) {
+            scroll("fav-\(itemId)")
+        } else if allStationsExpanded {
+            scroll("all-\(itemId)")
+        } else {
+            allStationsExpanded = true
+            DispatchQueue.main.async { scroll("all-\(itemId)") }
+        }
     }
 
     private func moveHighlight(by delta: Int) {
@@ -241,7 +266,7 @@ struct ChannelRow: View {
                 Text(item.channel.name)
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
-                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+                    .playingHighlight(isPlaying)
                 if showsNetwork {
                     Text("· \(item.network.shortLabel)")
                         .font(.system(size: 11))
@@ -285,7 +310,7 @@ struct ChannelRow: View {
 // MARK: - Recent Row
 
 /// Row in the Recently Played section — like ChannelRow but cross-network:
-/// shows the network suffix when it isn't the selected one, no star slot.
+/// shows the network suffix when it isn't the selected one.
 struct RecentRow: View {
     @Environment(AppState.self) private var appState
     let entry: RecentStation
@@ -296,13 +321,17 @@ struct RecentRow: View {
             && appState.playingNetwork == entry.network
     }
 
+    private var isFavorite: Bool {
+        appState.favoriteChannelIds(on: entry.network).contains(entry.channelId)
+    }
+
     var body: some View {
         Button(action: { appState.playRecentStation(entry) }) {
             HStack(spacing: 4) {
                 Text(entry.name)
                     .font(.system(size: 12))
                     .fontWeight(isPlaying ? .semibold : .regular)
-                    .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+                    .playingHighlight(isPlaying)
                 if appState.allNetworksSelected || entry.network != appState.selectedNetwork {
                     Text("· \(entry.network.shortLabel)")
                         .font(.system(size: 11))
@@ -311,6 +340,21 @@ struct RecentRow: View {
                 Spacer()
 
                 SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isPlaying)
+
+                Group {
+                    if isFavorite || isHovered {
+                        Button(action: { appState.toggleFavorite(channelId: entry.channelId, name: entry.name, on: entry.network) }) {
+                            Image(systemName: isFavorite ? "star.fill" : "star")
+                                .font(.caption2)
+                                .foregroundStyle(isFavorite ? AnyShapeStyle(.yellow.opacity(0.65)) : AnyShapeStyle(.secondary))
+                        }
+                        .buttonStyle(.plain)
+                        .help(isFavorite ? "Remove from favorites" : "Add to favorites")
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 16, height: 14)
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)

@@ -54,6 +54,30 @@ final class ChannelListTests: XCTestCase {
         XCTAssertTrue(merged.allSatisfy { $0.channel.name == "Chillout" })
     }
 
+    // MARK: - Favorite toggling (id-based overload)
+
+    // A fresh AppState has no apiKey, so toggles take the offline path and
+    // persist local overrides — snapshot and restore those prefs.
+    func testToggleFavoriteByIdMatchesChannelOverload() {
+        let savedAdded = Prefs.intSet(.localFavAdded, network: .zenradio)
+        let savedRemoved = Prefs.intSet(.localFavRemoved, network: .zenradio)
+        defer {
+            Prefs.set(savedAdded, for: .localFavAdded, network: .zenradio)
+            Prefs.set(savedRemoved, for: .localFavRemoved, network: .zenradio)
+        }
+
+        let state = AppState()
+        let ch = channel(id: 999_901, name: "Test Station")
+
+        state.toggleFavorite(channelId: ch.id, name: ch.name, on: .zenradio)
+        XCTAssertTrue(state.favoriteChannelIds(on: .zenradio).contains(ch.id))
+
+        // The Channel overload must undo the id-based toggle symmetrically
+        state.toggleFavorite(ch, on: .zenradio)
+        XCTAssertFalse(state.favoriteChannelIds(on: .zenradio).contains(ch.id))
+        XCTAssertTrue(state.sessionUnfavorited[.zenradio]?.contains(ch.id) ?? false)
+    }
+
     func testSingleNetworkMatchesOldBehavior() {
         let merged = AppState.filteredChannels(cache: cache, networks: [.di], searchText: "")
         XCTAssertEqual(merged.map(\.channel.name), ["Ambient", "Chillout"])

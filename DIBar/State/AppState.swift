@@ -467,6 +467,16 @@ final class AppState {
         }
     }
 
+    /// Fetches favorites for networks that appear in Recently Played but have
+    /// no cache entry yet, so recent rows show correct star state.
+    /// (loadFavorites writes a NetworkData entry even on failure, making the
+    /// nil check a fetch-once-per-session guard.)
+    func loadFavoritesForRecents() async {
+        for network in Set(recentStations.map(\.network)) where networkDataCache[network] == nil {
+            await loadFavorites(for: network)
+        }
+    }
+
     // MARK: - Song Votes
 
     /// The user's local vote on the current track (+1 / -1), nil when unvoted.

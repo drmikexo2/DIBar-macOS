@@ -65,7 +65,7 @@ private struct NetworkRow: View {
             Text(network.displayName)
                 .font(.system(size: 12))
                 .fontWeight(isPlaying ? .semibold : .regular)
-                .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+                .playingHighlight(isPlaying)
 
             Spacer()
 

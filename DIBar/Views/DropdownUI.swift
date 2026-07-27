@@ -59,6 +59,30 @@ struct DropdownCheckmark: View {
     }
 }
 
+/// Playing-station text treatment: the system accent as-is in light mode, but
+/// slightly lightened in dark mode — Night Shift filters out blue light, so
+/// pure accent blue on a dark background turns unreadably muddy. Built from
+/// live Color.accentColor plus a brightness filter (not a pre-blended
+/// NSColor) so the text follows accent-color changes instantly.
+private struct PlayingHighlight: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let isPlaying: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(isPlaying ? Color.accentColor : Color.primary)
+            .brightness(isPlaying && colorScheme == .dark ? 0.1 : 0)
+    }
+}
+
+extension View {
+    /// Colors a station-name label for its playing state (accent when
+    /// playing, primary otherwise), dark-mode-brightness-corrected.
+    func playingHighlight(_ isPlaying: Bool) -> some View {
+        modifier(PlayingHighlight(isPlaying: isPlaying))
+    }
+}
+
 /// Fixed-width trailing speaker slot: blue waves while audible, a muted
 /// speaker while current-but-paused, empty otherwise.
 struct SpeakerIndicator: View {
@@ -70,7 +94,8 @@ struct SpeakerIndicator: View {
             if isCurrent && isAudible {
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.caption2)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color.accentColor)
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
             } else if isCurrent {
                 Image(systemName: "speaker.fill")
                     .font(.caption2)
