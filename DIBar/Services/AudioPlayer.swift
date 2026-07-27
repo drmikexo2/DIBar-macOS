@@ -63,6 +63,9 @@ final class AudioPlayer {
     private var timingMode: TimingMode = .startupFrozen
     private var audibleStartedAt: Date?
     private var frozenElapsedSeconds: Int = 0
+    // Song shown before the latest ICY title change; lets a poll that still
+    // reports it be treated as API lag rather than the API moving ahead.
+    private var previousDisplayedTrack: (artist: String, title: String)?
 
     // Reconnect state
     private var lastPlayArgs: (channel: Channel, url: URL, network: Network)?
@@ -132,6 +135,7 @@ final class AudioPlayer {
         timingMode = .startupFrozen
         audibleStartedAt = nil
         frozenElapsedSeconds = 0
+        previousDisplayedTrack = nil
 
         let asset = AVURLAsset(
             url: streamURL,
@@ -293,6 +297,7 @@ final class AudioPlayer {
         timingMode = .startupFrozen
         audibleStartedAt = nil
         frozenElapsedSeconds = 0
+        previousDisplayedTrack = nil
         clearNowPlaying()
     }
 
@@ -610,8 +615,18 @@ final class AudioPlayer {
                     downVotes: downVotes
                 )
                 shouldUpdateTrack = true
+            } else if let previous = previousDisplayedTrack, TrackMatching.sameSong(
+                artistA: apiArtist, titleA: apiTitle,
+                artistB: previous.artist, titleB: previous.title
+            ) {
+                // API still reports the song ICY just left — it lags the
+                // stream, not the other way around. Keep ticking and let the
+                // near-track-end retries catch it up.
+                shouldUpdateTrack = false
             } else if apiLogicalKey != nil, currentLogicalKey != nil {
-                // API moved to another track before ICY reported it. Freeze until ICY catches up.
+                // API is on a track that is neither the current nor the
+                // previous song: it moved ahead before ICY reported it.
+                // Freeze until ICY catches up.
                 frozenElapsedSeconds = currentElapsedSeconds()
                 timingMode = .frozenNoIcy
                 nextTrack = NowPlaying(
@@ -627,7 +642,7 @@ final class AudioPlayer {
                     downVotes: nextTrack.downVotes
                 )
                 shouldUpdateTrack = true
-                log.error("POLL: API/ICY mismatch — freezing elapsed at \(self.frozenElapsedSeconds, privacy: .public)s")
+                log.info("POLL: API ahead of ICY — freezing elapsed at \(self.frozenElapsedSeconds, privacy: .public)s")
             } else {
                 // No stable API title to merge; keep current audible state.
                 shouldUpdateTrack = false
@@ -635,11 +650,14 @@ final class AudioPlayer {
 
         case .frozenNoIcy:
             // Same fuzzy test: the freeze holds while the API is on the next
-            // song (different title), and lifts if it flaps back to ours.
+            // song (different title), and lifts once it agrees with ours —
+            // resuming the tick from the ICY anchor set at the title change.
             if TrackMatching.sameSong(
                 artistA: apiArtist, titleA: apiTitle,
                 artistB: nextTrack.artist, titleB: nextTrack.title
             ) {
+                timingMode = .icyAnchored
+                frozenElapsedSeconds = 0
                 nextTrack = NowPlaying(
                     channelName: channelName,
                     artist: apiArtist.isEmpty ? nextTrack.artist : apiArtist,
@@ -647,8 +665,8 @@ final class AudioPlayer {
                     trackId: item.trackId ?? nextTrack.trackId,
                     artURL: artURL ?? nextTrack.artURL,
                     duration: apiDuration,
-                    startedAt: nextTrack.startedAt,
-                    elapsedOverride: frozenElapsedSeconds,
+                    startedAt: audibleStartedAt ?? nextTrack.startedAt,
+                    elapsedOverride: nil,
                     upVotes: upVotes,
                     downVotes: downVotes
                 )
@@ -754,6 +772,7 @@ final class AudioPlayer {
         guard normalizedTitle != lastIcyStreamTitle else { return }
         lastIcyStreamTitle = normalizedTitle
 
+        previousDisplayedTrack = currentTrack.map { ($0.artist, $0.title) }
         lastIcyLogicalKey = logicalKey
         timingMode = .icyAnchored
         audibleStartedAt = Date()
