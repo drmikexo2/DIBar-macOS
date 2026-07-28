@@ -1,10 +1,36 @@
 import SwiftUI
 
+struct PlayingRevealRequest: Equatable {
+    let network: Network
+    let channelID: Int
+    let requiresNetworkSwitch: Bool
+
+    var itemID: String {
+        "\(network.rawValue)-\(channelID)"
+    }
+
+    static func resolve(
+        channelID: Int?,
+        playingNetwork: Network?,
+        selectedNetwork: Network,
+        allNetworksSelected: Bool
+    ) -> PlayingRevealRequest? {
+        guard let channelID, let playingNetwork else { return nil }
+        return PlayingRevealRequest(
+            network: playingNetwork,
+            channelID: channelID,
+            requiresNetworkSwitch: !allNetworksSelected && selectedNetwork != playingNetwork
+        )
+    }
+}
+
 struct StationListView: View {
     @Environment(AppState.self) private var appState
     @State private var allStationsExpanded = Prefs.bool(.allStationsExpanded, default: true)
     @State private var recentExpanded = Prefs.bool(.recentStationsExpanded, default: true)
     @State private var highlightedIndex: Int?
+    @State private var pendingPlayingReveal: PlayingRevealRequest?
+    @State private var pendingRevealSawLoading = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -140,14 +166,29 @@ struct StationListView: View {
                     .frame(height: appState.artworkExpanded ? 180 : 280)
                     .onAppear {
                         searchFocused = true
-                        scrollToPlaying(proxy: proxy)
+                        if pendingPlayingReveal != nil {
+                            fulfillPendingPlayingReveal(proxy: proxy)
+                        } else {
+                            scrollToPlayingInCurrentScope(proxy: proxy)
+                        }
                     }
                     .background(
                         // Cmd+L jumps to the playing station, as in iTunes
-                        Button("") { scrollToPlaying(proxy: proxy, animated: true) }
+                        Button("") { requestPlayingReveal(proxy: proxy) }
                             .keyboardShortcut("l", modifiers: .command)
                             .opacity(0)
                     )
+                    .onChange(of: pendingPlayingRevealIsAvailable) { _, available in
+                        if available {
+                            fulfillPendingPlayingReveal(proxy: proxy)
+                        }
+                    }
+                    .onChange(of: appState.selectedNetwork) { _, _ in
+                        fulfillPendingPlayingReveal(proxy: proxy)
+                    }
+                    .onChange(of: appState.allNetworksSelected) { _, _ in
+                        fulfillPendingPlayingReveal(proxy: proxy)
+                    }
                     .onChange(of: highlightedIndex) { _, index in
                         if let index, appState.filteredChannels.indices.contains(index) {
                             proxy.scrollTo("all-\(appState.filteredChannels[index].id)", anchor: .center)
@@ -168,6 +209,15 @@ struct StationListView: View {
         .onChange(of: searchFocused) { _, focused in
             appState.searchFieldFocused = focused
         }
+        .onChange(of: appState.isLoading) { _, loading in
+            guard let request = pendingPlayingReveal else { return }
+            if loading {
+                pendingRevealSawLoading = true
+            } else if pendingRevealSawLoading,
+                      appState.networkDataCache[request.network]?.isLoaded != true {
+                clearPendingPlayingReveal()
+            }
+        }
     }
 
     private var favoritesTitle: String {
@@ -181,15 +231,77 @@ struct StationListView: View {
         return "All \(scope)Channels (\(appState.filteredChannels.count))"
     }
 
-    /// Scrolls to the currently playing station. A playing favorite is shown
-    /// in its Favorites row at the top, not its duplicate down in All
-    /// Stations; a collapsed All Stations section is expanded first, with the
-    /// scroll deferred a runloop so the lazy rows exist to scroll to.
-    private func scrollToPlaying(proxy: ScrollViewProxy, animated: Bool = false) {
-        guard let playingId = appState.audioPlayer.currentChannel?.id,
-              let playingNetwork = appState.playingNetwork,
-              appState.displayedNetworks.contains(playingNetwork) else { return }
-        let itemId = "\(playingNetwork.rawValue)-\(playingId)"
+    private var pendingPlayingRevealIsAvailable: Bool {
+        guard let request = pendingPlayingReveal,
+              appState.displayedNetworks.contains(request.network) else { return false }
+        return rowTarget(for: request) != nil
+    }
+
+    /// Cmd+L is allowed to change scope. Keep that intent pending until a
+    /// newly selected site's rows have loaded and rendered.
+    private func requestPlayingReveal(proxy: ScrollViewProxy) {
+        guard let request = PlayingRevealRequest.resolve(
+            channelID: appState.audioPlayer.currentChannel?.id,
+            playingNetwork: appState.playingNetwork,
+            selectedNetwork: appState.selectedNetwork,
+            allNetworksSelected: appState.allNetworksSelected
+        ) else {
+            clearPendingPlayingReveal()
+            return
+        }
+
+        pendingPlayingReveal = request
+        pendingRevealSawLoading = appState.isLoading
+
+        if request.requiresNetworkSwitch {
+            appState.selectNetwork(request.network)
+        } else if !appState.searchText.isEmpty,
+                  !appState.filteredChannels.contains(where: { $0.id == request.itemID }) {
+            // A navigation command should reveal its destination even when
+            // the current search happens to filter that station out.
+            appState.searchText = ""
+        }
+
+        fulfillPendingPlayingReveal(proxy: proxy)
+    }
+
+    private func fulfillPendingPlayingReveal(proxy: ScrollViewProxy) {
+        guard let request = pendingPlayingReveal else { return }
+        if scroll(to: request, proxy: proxy, animated: true) {
+            clearPendingPlayingReveal()
+        } else if appState.networkDataCache[request.network]?.isLoaded == true {
+            // The catalog loaded but no longer contains the playing station.
+            clearPendingPlayingReveal()
+        }
+    }
+
+    /// Opening the panel may center the playing row, but it must never switch
+    /// the site the user deliberately chose. Only Cmd+L can do that.
+    private func scrollToPlayingInCurrentScope(proxy: ScrollViewProxy) {
+        guard let request = PlayingRevealRequest.resolve(
+            channelID: appState.audioPlayer.currentChannel?.id,
+            playingNetwork: appState.playingNetwork,
+            selectedNetwork: appState.selectedNetwork,
+            allNetworksSelected: appState.allNetworksSelected
+        ), !request.requiresNetworkSwitch else { return }
+        _ = scroll(to: request, proxy: proxy, animated: false)
+    }
+
+    /// A playing favorite is shown in its Favorites row at the top, not its
+    /// duplicate in All Channels. Expanding or replacing list contents needs
+    /// one main-loop turn before ScrollViewReader can resolve the row ID.
+    @discardableResult
+    private func scroll(
+        to request: PlayingRevealRequest,
+        proxy: ScrollViewProxy,
+        animated: Bool
+    ) -> Bool {
+        guard appState.displayedNetworks.contains(request.network) else { return false }
+        guard let target = rowTarget(for: request) else { return false }
+        if target.hasPrefix("all-"), !allStationsExpanded {
+            allStationsExpanded = true
+        }
+
         let scroll: (String) -> Void = { target in
             if animated {
                 withAnimation { proxy.scrollTo(target, anchor: .center) }
@@ -197,15 +309,25 @@ struct StationListView: View {
                 proxy.scrollTo(target, anchor: .center)
             }
         }
+        DispatchQueue.main.async { scroll(target) }
+        return true
+    }
+
+    private func rowTarget(for request: PlayingRevealRequest) -> String? {
+        let itemId = request.itemID
         if appState.searchText.isEmpty,
            appState.favoriteChannels.contains(where: { $0.id == itemId }) {
-            scroll("fav-\(itemId)")
-        } else if allStationsExpanded {
-            scroll("all-\(itemId)")
-        } else {
-            allStationsExpanded = true
-            DispatchQueue.main.async { scroll("all-\(itemId)") }
+            return "fav-\(itemId)"
         }
+        if appState.filteredChannels.contains(where: { $0.id == itemId }) {
+            return "all-\(itemId)"
+        }
+        return nil
+    }
+
+    private func clearPendingPlayingReveal() {
+        pendingPlayingReveal = nil
+        pendingRevealSawLoading = false
     }
 
     private func moveHighlight(by delta: Int) {

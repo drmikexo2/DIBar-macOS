@@ -83,4 +83,56 @@ final class ChannelListTests: XCTestCase {
         XCTAssertEqual(merged.map(\.channel.name), ["Ambient", "Chillout"])
         XCTAssertTrue(merged.allSatisfy { $0.network == .di })
     }
+
+    // MARK: - Playing station reveal
+
+    func testPlayingRevealSwitchesFromWrongConcreteNetwork() {
+        let request = PlayingRevealRequest.resolve(
+            channelID: 42,
+            playingNetwork: .jazzradio,
+            selectedNetwork: .di,
+            allNetworksSelected: false
+        )
+
+        XCTAssertEqual(request?.network, .jazzradio)
+        XCTAssertEqual(request?.itemID, "jazzradio-42")
+        XCTAssertEqual(request?.requiresNetworkSwitch, true)
+    }
+
+    func testPlayingRevealStaysOnMatchingConcreteNetwork() {
+        let request = PlayingRevealRequest.resolve(
+            channelID: 42,
+            playingNetwork: .jazzradio,
+            selectedNetwork: .jazzradio,
+            allNetworksSelected: false
+        )
+
+        XCTAssertEqual(request?.requiresNetworkSwitch, false)
+    }
+
+    func testPlayingRevealKeepsAllSitesSelected() {
+        let request = PlayingRevealRequest.resolve(
+            channelID: 42,
+            playingNetwork: .jazzradio,
+            selectedNetwork: .di,
+            allNetworksSelected: true
+        )
+
+        XCTAssertEqual(request?.requiresNetworkSwitch, false)
+    }
+
+    func testPlayingRevealNeedsAChannelAndNetwork() {
+        XCTAssertNil(PlayingRevealRequest.resolve(
+            channelID: nil,
+            playingNetwork: .jazzradio,
+            selectedNetwork: .di,
+            allNetworksSelected: false
+        ))
+        XCTAssertNil(PlayingRevealRequest.resolve(
+            channelID: 42,
+            playingNetwork: nil,
+            selectedNetwork: .di,
+            allNetworksSelected: false
+        ))
+    }
 }
