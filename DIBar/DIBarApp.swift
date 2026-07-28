@@ -20,10 +20,16 @@ struct DIBarApp: App {
 
 /// Borderless panels refuse key status by default; the search field needs it.
 private final class FloatingPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
 
     override func cancelOperation(_ sender: Any?) {
-        orderOut(nil)
+        if let onCancel {
+            onCancel()
+        } else {
+            orderOut(nil)
+        }
     }
 }
 
@@ -73,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel!
     private var panelTopLeft: NSPoint?
     private var lastLabelKey: String?
+    private var speakerAnimationTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prefs migrates itself lazily on first access, so no ordering here.
@@ -99,6 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovable = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        panel.onCancel = { [weak self] in
+            self?.closePanel()
+        }
 
         let hosting = NSHostingController(
             rootView: MenuBarView(
@@ -149,6 +159,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         startLabelObservation()
+        startSpeakerAnimationObservation()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.syncSpeakerAnimationClock() }
+        }
 
         setupDebugNotifications()
     }
@@ -208,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopSpeakerAnimationClock()
         appState?.historyRecorder.appWillTerminate()
     }
 
@@ -239,13 +259,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         statusItem.button?.highlight(true)
         appState.trackNotifier.popoverIsVisible = true
+        syncSpeakerAnimationClock()
     }
 
     private func closePanel() {
+        stopSpeakerAnimationClock()
         panelTopLeft = nil
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
         appState.trackNotifier.popoverIsVisible = false
+    }
+
+    // MARK: - Speaker animation
+
+    /// Playback phase and mute state can change while the panel remains open.
+    /// Re-arm Observation after each change and keep the single shared clock
+    /// exactly in sync with whether an audible indicator can be onscreen.
+    private func startSpeakerAnimationObservation() {
+        withObservationTracking {
+            _ = appState.audioPlayer.phase
+            _ = appState.audioPlayer.isMuted
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncSpeakerAnimationClock()
+                self.startSpeakerAnimationObservation()
+            }
+        }
+    }
+
+    private func syncSpeakerAnimationClock() {
+        let shouldRun = panel.isVisible
+            && appState.audioPlayer.isAudiblyPlaying
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+        guard shouldRun else {
+            stopSpeakerAnimationClock()
+            return
+        }
+        guard speakerAnimationTimer == nil else { return }
+
+        appState.speakerWaveFrame = 0
+        let timer = Timer(
+            timeInterval: SpeakerIndicatorPresentation.waveFrameInterval,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.speakerAnimationTimer != nil else { return }
+                self.appState.speakerWaveFrame =
+                    (self.appState.speakerWaveFrame + 1) % SpeakerIndicatorPresentation.waveFrameCount
+            }
+        }
+        timer.tolerance = 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        speakerAnimationTimer = timer
+    }
+
+    private func stopSpeakerAnimationClock() {
+        speakerAnimationTimer?.invalidate()
+        speakerAnimationTimer = nil
     }
 
     // Re-render the label whenever any observable state it reads changes;

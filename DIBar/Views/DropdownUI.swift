@@ -83,19 +83,58 @@ extension View {
     }
 }
 
-/// Fixed-width trailing speaker slot: blue waves while audible, a muted
-/// speaker while current-but-paused, empty otherwise.
+/// Pure presentation mapping for SpeakerIndicator, kept separate so the
+/// stepped animation can be tested without instantiating SwiftUI views.
+enum SpeakerIndicatorPresentation {
+    static let steadyWaveSymbol = "speaker.wave.2.fill"
+    private static let waveSymbols = [
+        "speaker.wave.1.fill",
+        steadyWaveSymbol,
+        "speaker.wave.3.fill",
+    ]
+    static var waveFrameCount: Int { waveSymbols.count }
+    static let waveCycleDuration: TimeInterval = 2.0
+    static var waveFrameInterval: TimeInterval {
+        waveCycleDuration / Double(waveFrameCount)
+    }
+
+    static func symbolName(
+        isCurrent: Bool,
+        isAudible: Bool,
+        waveFrame: Int,
+        reduceMotion: Bool = false
+    ) -> String? {
+        guard isCurrent else { return nil }
+        guard isAudible else { return "speaker.fill" }
+        return waveSymbol(waveFrame: waveFrame, reduceMotion: reduceMotion)
+    }
+
+    static func waveSymbol(waveFrame: Int, reduceMotion: Bool) -> String {
+        guard !reduceMotion else { return steadyWaveSymbol }
+        let index = ((waveFrame % waveSymbols.count) + waveSymbols.count) % waveSymbols.count
+        return waveSymbols[index]
+    }
+}
+
+/// Fixed-width trailing speaker slot: low-rate stepped blue waves while
+/// audible, a muted speaker while current-but-paused, empty otherwise.
+/// All instances share AppState's single clock; there is deliberately no
+/// symbolEffect or interpolated transition here.
 struct SpeakerIndicator: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let isCurrent: Bool
     let isAudible: Bool
 
     var body: some View {
         Group {
-            if isCurrent && isAudible {
-                Image(systemName: "speaker.wave.2.fill")
+            if isCurrent && isAudible && appState.audioPlayer.isAudiblyPlaying {
+                Image(systemName: SpeakerIndicatorPresentation.waveSymbol(
+                    waveFrame: appState.speakerWaveFrame,
+                    reduceMotion: reduceMotion
+                ))
                     .font(.caption2)
                     .foregroundStyle(Color.accentColor)
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
             } else if isCurrent {
                 Image(systemName: "speaker.fill")
                     .font(.caption2)
@@ -104,6 +143,10 @@ struct SpeakerIndicator: View {
                 Color.clear
             }
         }
-        .frame(width: 16, height: 14)
+        // The SF Symbol variants have different intrinsic widths (roughly
+        // 12/14/17pt at this size). A leading-aligned frame keeps the speaker
+        // body and each successive wave at fixed x coordinates instead of
+        // recentering the whole glyph on every step.
+        .frame(width: 18, height: 14, alignment: .leading)
     }
 }

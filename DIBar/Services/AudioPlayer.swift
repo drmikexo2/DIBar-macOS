@@ -47,6 +47,13 @@ final class AudioPlayer {
         return false
     }
 
+    /// True only while sound should actually be coming from the selected
+    /// output. `isPlaying` remains the user's intent through buffering and
+    /// reconnecting, so it is too broad for an animated audible indicator.
+    var isAudiblyPlaying: Bool {
+        phase == .playing && !isMuted
+    }
+
     private var player: AVPlayer?
     private var trackPollTask: Task<Void, Never>?
     private var statusObservation: NSKeyValueObservation?

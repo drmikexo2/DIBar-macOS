@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1
+
+### Performance
+
+- Fixed DIBar consuming roughly 25–35% CPU while playing because the animated speaker kept SwiftUI rendering continuously, even with the menu panel closed.
+- Replaced the display-rate SF Symbol effect with one lightweight shared animation clock that runs only while the panel is visible and audio is audible.
+- The speaker now advances outward at half a cycle per second, keeps its body and waves anchored in place, and stays static when Reduce Motion is enabled.
+
+### Navigation
+
+- Command-L now switches to the playing channel's site when needed, then reveals and centers that channel after its catalog loads.
+
 ## 1.3
 
 ### Faster windows
