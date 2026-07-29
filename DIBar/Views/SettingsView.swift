@@ -8,9 +8,32 @@ struct SettingsWindowView: View {
     @State private var launchAtLogin: Bool?
     @State private var isUpdatingLaunchAtLogin = false
     @State private var showLogoutConfirmation = false
+    var onCheckForUpdates: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("DIBar")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(Self.versionLine)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                ChipButton(title: "Check for updates…") {
+                    onCheckForUpdates()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .help("DIBar checks for new versions automatically once a day. Updates are downloaded from GitHub and installed in place.")
+
+            Divider()
+
             settingsRow("Quality") {
                 qualityMenu
             }
@@ -122,15 +145,6 @@ struct SettingsWindowView: View {
 
             Divider()
 
-            settingsRow("Save song history (on this Mac)") {
-                Toggle("", isOn: Bindable(appState).saveListeningHistory)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-            }
-            .help("Remembers the songs and channels you listen to in a file on this Mac, so DIBar can show your listening stats. Nothing is sent anywhere.")
-
-            Divider()
-
             scrobblingSection
 
             Divider()
@@ -227,6 +241,19 @@ struct SettingsWindowView: View {
         }
     }
 
+    private static let appVersion =
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+
+    /// "1.3.2 · 28 jul 2026" — the date comes from the executable on disk,
+    /// so it tracks whatever build is actually running.
+    private static let versionLine: String = {
+        guard let url = Bundle.main.executableURL,
+              let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))
+                  .flatMap(\.contentModificationDate)
+        else { return appVersion }
+        return "\(appVersion) · \(date.formatted(date: .abbreviated, time: .omitted))"
+    }()
+
     private static func readLaunchAtLoginStatus() async -> Bool {
         await Task.detached(priority: .userInitiated) {
             SMAppService.mainApp.status == .enabled
@@ -241,7 +268,7 @@ struct SettingsWindowView: View {
             settingsRow("Last.fm") {
                 lastFMControl
             }
-            .help("Sends the songs you listen to (at least half through, or 4 minutes) to your Last.fm profile. Apps like Airbuds can read them from there. Requires song history to stay on.")
+            .help("Sends the songs you listen to (at least half through, or 4 minutes) to your Last.fm profile. Apps like Airbuds can read them from there.")
 
             if let error = appState.scrobbler.connectionError {
                 caption(error, color: .orange)
@@ -396,6 +423,35 @@ private struct KeyCap: View {
             RoundedRectangle(cornerRadius: 3.5)
                 .strokeBorder(.quaternary, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Chip Button
+
+/// Quiet rounded action chip: the same surface as the quality dropdown, with
+/// ToggleChip's hover ring so it reads as clickable without shouting.
+private struct ChipButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(Color.accentColor.opacity(isHovered ? 0.9 : 0), lineWidth: 1.5)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .cursor(.pointingHand)
     }
 }
 

@@ -29,5 +29,15 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/drmikexo2/DIBar-macOS/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>FY2SJIvE8Jk+zE1NAbqHtE3JdDZwgpM1qmjlTuaNijo=</string>
 </dict>
 </plist>

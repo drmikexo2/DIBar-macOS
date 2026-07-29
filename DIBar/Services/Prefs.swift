@@ -19,7 +19,6 @@ enum Prefs {
         case allNetworksSelected = "all_networks_selected"
         case recentStations = "recent_stations"
         case quality
-        case saveHistory = "save_history"
         case notifyTrackChanges = "notify_track_changes"
         case notifyChannelSwitch = "notify_channel_switch"
         case outputDeviceUID = "output_device_uid"

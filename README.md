@@ -59,7 +59,7 @@
 | **CPU at idle** | 0% | 0.5-2% |
 | **Startup** | Instant | 2-5 seconds |
 
-DIBar uses `AVPlayer` for audio, `MPRemoteCommandCenter` for media keys, a hand-managed `NSStatusItem` with a SwiftUI panel for the interface, and the system SQLite for history. No runtime overhead from bundled browsers, and zero third-party dependencies.
+DIBar uses `AVPlayer` for audio, `MPRemoteCommandCenter` for media keys, a hand-managed `NSStatusItem` with a SwiftUI panel for the interface, and the system SQLite for history. No runtime overhead from bundled browsers, and a single third-party dependency: [Sparkle](https://sparkle-project.org), the standard open-source updater for Mac apps.
 
 ## Requirements
 
@@ -72,6 +72,8 @@ DIBar uses `AVPlayer` for audio, `MPRemoteCommandCenter` for media keys, a hand-
 
 Releases are Developer ID signed and notarized by Apple, so there are no Gatekeeper hoops. Unzip, drag `DIBar.app` to Applications, and launch.
 
+DIBar checks for new versions once a day and offers one-click updates (via Sparkle, verified against the release's EdDSA signature). You can also check manually from Settings.
+
 ## Build From Source
 
 ```bash
@@ -82,6 +84,8 @@ xcodebuild -project DIBar.xcodeproj -scheme DIBar -configuration Release build
 ```
 
 Last.fm scrobbling needs your own API key and secret in `Secrets.swift`; everything else works without it.
+
+Maintainers: releases must follow [RELEASING.md](RELEASING.md) (`scripts/release.sh <version>`), or auto-update clients will never see them.
 
 ## Privacy
 

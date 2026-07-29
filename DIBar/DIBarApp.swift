@@ -1,4 +1,5 @@
 import SwiftUI
+import Sparkle
 import os
 
 private let log = Logger(subsystem: "com.dibar", category: "App")
@@ -127,6 +128,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var speakerAnimationTimer: Timer?
     private let panelPresentation = PanelPresentationState()
 
+    // Sparkle owns the whole update pipeline (feed check, download, and the
+    // out-of-sandbox install via its Installer XPC service). Starting it here
+    // schedules the automatic background checks.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prefs migrates itself lazily on first access, so no ordering here.
         appState = AppState()
@@ -225,7 +235,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showSettingsWindow() {
         if settingsWindow == nil {
             let window = NSWindow(contentViewController: NSHostingController(
-                rootView: SettingsWindowView().environment(appState)
+                rootView: SettingsWindowView(onCheckForUpdates: { [weak self] in
+                    self?.updaterController.checkForUpdates(nil)
+                }).environment(appState)
             ))
             window.title = "DIBar Settings"
             window.styleMask = [.titled, .closable]

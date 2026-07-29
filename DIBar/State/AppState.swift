@@ -44,12 +44,6 @@ final class AppState {
 
     // Listening history
     let historyRecorder: HistoryRecorder
-    var saveListeningHistory: Bool = Prefs.bool(.saveHistory, default: true) {
-        didSet {
-            Prefs.set(saveListeningHistory, for: .saveHistory)
-            historyRecorder.setEnabled(saveListeningHistory)
-        }
-    }
 
     // Scrobbling
     let scrobbler: Scrobbler
@@ -207,7 +201,7 @@ final class AppState {
         historyRecorder = HistoryRecorder(player: audioPlayer)
         trackNotifier = TrackNotifier(player: audioPlayer)
         scrobbler = Scrobbler(recorder: historyRecorder)
-        historyRecorder.setEnabled(saveListeningHistory)
+        historyRecorder.setEnabled(true)
         historyRecorder.start()
         historyRecorder.onTrackStarted = { [weak self] artist, title, duration in
             self?.scrobbler.trackStarted(artist: artist, title: title, duration: duration)
