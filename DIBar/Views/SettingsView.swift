@@ -24,9 +24,10 @@ struct SettingsWindowView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                ChipButton(title: "Check for updates…") {
+                Button("Check for updates…") {
                     onCheckForUpdates()
                 }
+                .controlSize(.small)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -423,35 +424,6 @@ private struct KeyCap: View {
             RoundedRectangle(cornerRadius: 3.5)
                 .strokeBorder(.quaternary, lineWidth: 1)
         )
-    }
-}
-
-// MARK: - Chip Button
-
-/// Quiet rounded action chip: the same surface as the quality dropdown, with
-/// ToggleChip's hover ring so it reads as clickable without shouting.
-private struct ChipButton: View {
-    let title: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11))
-                .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(Color.accentColor.opacity(isHovered ? 0.9 : 0), lineWidth: 1.5)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .cursor(.pointingHand)
     }
 }
 
