@@ -134,7 +134,7 @@ final class AppState {
     var menuBarShowPlayState: Bool = Prefs.bool(.menuBarShowPlayState, default: true) {
         didSet { Prefs.set(menuBarShowPlayState, for: .menuBarShowPlayState) }
     }
-    var menuBarShowSite: Bool = Prefs.bool(.menuBarShowSite, default: true) {
+    var menuBarShowSite: Bool = Prefs.bool(.menuBarShowSite, default: false) {
         didSet { Prefs.set(menuBarShowSite, for: .menuBarShowSite) }
     }
     var menuBarShowStation: Bool = Prefs.bool(.menuBarShowStation, default: true) {
