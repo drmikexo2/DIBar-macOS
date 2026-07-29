@@ -31,14 +31,17 @@ The script does everything below in order and stops on the first failure.
 
 ## What the script enforces
 
-1. Clean tree on `main`, release does not already exist, CHANGELOG section present.
-2. Build number strictly greater than both the pbxproj value and the highest
+1. Clean tree on `main`, pull current `main`, confirm release credentials and
+   tools, ensure the release does not already exist, and require a CHANGELOG section.
+2. Read versions only after the pull, then require a build number strictly
+   greater than both the pbxproj value and the highest
    `sparkle:version` in `appcast.xml`. Sparkle compares `CFBundleVersion`,
    so a reused build number would make an update invisible.
 3. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`, run the test suite.
-4. Archive, export with `ExportOptions.plist` (Developer ID, team FA2AMFV98N),
-   notarize with `notarytool --wait`, staple, package
-   `dist/DIBar-v<X>-macOS.zip` plus `.sha256`.
+4. In a unique temporary directory, archive and export with
+   `ExportOptions.plist` (Developer ID, team FA2AMFV98N), notarize with
+   `notarytool --wait`, staple, and strictly verify the app and Sparkle helper
+   signatures. Package `dist/DIBar-v<X>-macOS.zip` plus `.sha256`.
 5. Commit `Release DIBar <X>`, push, `gh release create v<X>` with the
    CHANGELOG section as notes and both files as assets.
 6. Re-download the published asset and require a byte-identical sha256 —
@@ -55,9 +58,28 @@ automatically by default (`SUAutomaticallyUpdate`).
 
 ## If the script fails partway
 
-Fix the cause and rerun; every step is idempotent up to the release commit.
-After the release commit exists, finish the remaining steps manually in the
-same order (they map one-to-one onto the script's sections).
+Before the `Release DIBar <X>` commit, the exit trap restores the project
+version and removes the temporary archive/export directory. Fix the cause and
+rerun the same command.
+
+After the release commit exists, the script deliberately does not rewrite Git
+or GitHub history. Do not rerun it, because the version or GitHub Release may
+already exist. The failure message names the phase; continue as follows:
+
+- **Release commit push:** inspect `git status` and `git log -1`, then `git push`.
+- **GitHub release:** create `v<X>` from the existing release commit and upload
+  the ZIP and checksum already present in `dist/`.
+- **Published asset verification or appcast generation:** download the
+  published ZIP, verify it matches the local checksum, then run the appcast
+  generation/signature-verification section from `scripts/release.sh`.
+- **Appcast commit or push:** confirm `appcast.xml` describes the downloadable
+  asset and its EdDSA signature verifies, then commit/push it.
+- **Feed CDN verification:** no repository recovery is needed; check the raw
+  appcast URL until it exposes the new `sparkle:version`.
+
+If appcast generation fails before its commit, the trap restores the last
+published `appcast.xml`, preventing a partial feed from remaining in the
+working tree.
 
 ## Release notes style
 

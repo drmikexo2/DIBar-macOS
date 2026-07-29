@@ -2,35 +2,39 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
+    @Environment(UpdatePresentationState.self) private var updatePresentation
     @Environment(\.openURL) private var openURL
     let onOpenSettings: () -> Void
     let onOpenHistory: () -> Void
+    let onCheckForUpdates: () -> Void
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            if let version = updatePresentation.availableVersion {
+                UpdateAvailableBanner(version: version, action: onCheckForUpdates)
+                Divider()
+            }
             if appState.isLoggedIn {
-                VStack(spacing: 0) {
-                    if appState.audioPlayer.playbackError != nil, appState.playbackFailureLooksLikeNoPremium {
-                        ErrorBanner(
-                            message: "Playback failed — premium subscription may be required",
-                            actionTitle: "Subscribe",
-                            action: { openURL(AppState.subscriptionURL) },
-                            onDismiss: { appState.audioPlayer.playbackError = nil }
-                        )
-                        Divider()
-                    } else if let message = appState.errorMessage ?? appState.audioPlayer.playbackError {
-                        ErrorBanner(message: message) {
-                            appState.errorMessage = nil
-                            appState.audioPlayer.playbackError = nil
-                        }
-                        Divider()
+                if appState.audioPlayer.playbackError != nil, appState.playbackFailureLooksLikeNoPremium {
+                    ErrorBanner(
+                        message: "Playback failed — premium subscription may be required",
+                        actionTitle: "Subscribe",
+                        action: { openURL(AppState.subscriptionURL) },
+                        onDismiss: { appState.audioPlayer.playbackError = nil }
+                    )
+                    Divider()
+                } else if let message = appState.errorMessage ?? appState.audioPlayer.playbackError {
+                    ErrorBanner(message: message) {
+                        appState.errorMessage = nil
+                        appState.audioPlayer.playbackError = nil
                     }
-                    PlayerControlsView()
                     Divider()
-                    StationListView()
-                    Divider()
-                    footer
                 }
+                PlayerControlsView()
+                Divider()
+                StationListView()
+                Divider()
+                footer
             } else {
                 LoginView()
             }
@@ -54,6 +58,30 @@ struct MenuBarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .padding(.bottom, 2)
+    }
+}
+
+private struct UpdateAvailableBanner: View {
+    let version: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
+            Text("DIBar \(version) is available")
+                .font(.system(size: 11))
+                .lineLimit(1)
+            Spacer()
+            Button("Update…", action: action)
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.1))
     }
 }
 

@@ -103,6 +103,58 @@ final class SpeakerIndicatorTests: XCTestCase {
     }
 }
 
+final class UpdateReminderTests: XCTestCase {
+    func testScheduledUpdateOnlyLetsSparkleStealFocusAtOpportuneTime() {
+        XCTAssertTrue(UpdateReminderPolicy.shouldLetSparklePresent(immediateFocus: true))
+        XCTAssertFalse(UpdateReminderPolicy.shouldLetSparklePresent(immediateFocus: false))
+    }
+
+    func testBadgeOnlyAppearsForDeferredScheduledUpdate() {
+        XCTAssertTrue(UpdateReminderPolicy.shouldShowBadge(
+            handleShowingUpdate: false,
+            userInitiated: false
+        ))
+        XCTAssertFalse(UpdateReminderPolicy.shouldShowBadge(
+            handleShowingUpdate: true,
+            userInitiated: false
+        ))
+        XCTAssertFalse(UpdateReminderPolicy.shouldShowBadge(
+            handleShowingUpdate: false,
+            userInitiated: true
+        ))
+    }
+
+    func testPresentationStateShowsAndClearsAvailableVersion() async {
+        await MainActor.run {
+            let state = UpdatePresentationState()
+            XCTAssertNil(state.availableVersion)
+            state.show(version: "1.4")
+            XCTAssertEqual(state.availableVersion, "1.4")
+            state.clear()
+            XCTAssertNil(state.availableVersion)
+        }
+    }
+
+    func testUpdateBadgePreservesMenuBarLabelDimensions() async {
+        await MainActor.run {
+            let regular = MenuBarLabelRenderer.labelImage(
+                line1: "Artist",
+                line2: "Song",
+                glyph: .playing
+            )
+            let badged = MenuBarLabelRenderer.labelImage(
+                line1: "Artist",
+                line2: "Song",
+                glyph: .playing,
+                showsUpdateBadge: true
+            )
+
+            XCTAssertEqual(regular.size, badged.size)
+            XCTAssertNotEqual(regular.tiffRepresentation, badged.tiffRepresentation)
+        }
+    }
+}
+
 final class ArtCacheTests: XCTestCase {
     func testCacheUsesBoundedDecodedMemoryBudget() async {
         await MainActor.run {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+### Automatic updates
+
+- DIBar now checks for signed updates automatically and can download, install, and relaunch new versions in place.
+- Scheduled checks stay out of the way: an available update appears as a small menu bar badge and an Update action inside DIBar instead of interrupting the current app.
+- Settings now shows the installed version and build date, with a button to check for updates immediately.
+
+### Release safety
+
+- Releases are notarized, stapled, verified, and published with a signed Sparkle appcast.
+- The release workflow now validates credentials and release notes up front, verifies the uploaded artifact, and can recover safely from partial failures.
+
 ## 1.3.2
 
 ### Memory

@@ -66,6 +66,22 @@ final class PanelPresentationState {
     var speakerWaveFrame = 0
 }
 
+/// Long-lived UI state for a scheduled Sparkle update that DIBar is reminding
+/// the user about without stealing focus from the foreground application.
+@Observable
+@MainActor
+final class UpdatePresentationState {
+    private(set) var availableVersion: String?
+
+    func show(version: String) {
+        availableVersion = version
+    }
+
+    func clear() {
+        availableVersion = nil
+    }
+}
+
 enum SpeakerAnimationPolicy {
     static func shouldRun(
         isPanelVisible: Bool,
@@ -73,6 +89,18 @@ enum SpeakerAnimationPolicy {
         reduceMotion: Bool
     ) -> Bool {
         isPanelVisible && isAudiblyPlaying && !reduceMotion
+    }
+}
+
+enum UpdateReminderPolicy {
+    /// Near launch or after idle time, Sparkle can present its standard window
+    /// in focus. Otherwise DIBar owns the reminder in its menu-bar UI.
+    static func shouldLetSparklePresent(immediateFocus: Bool) -> Bool {
+        immediateFocus
+    }
+
+    static func shouldShowBadge(handleShowingUpdate: Bool, userInitiated: Bool) -> Bool {
+        !handleShowingUpdate && !userInitiated
     }
 }
 
@@ -84,13 +112,15 @@ private struct PanelRootView: View {
     @Environment(PanelPresentationState.self) private var presentation
     let onOpenSettings: () -> Void
     let onOpenHistory: () -> Void
+    let onCheckForUpdates: () -> Void
 
     var body: some View {
         Group {
             if presentation.isVisible {
                 MenuBarView(
                     onOpenSettings: onOpenSettings,
-                    onOpenHistory: onOpenHistory
+                    onOpenHistory: onOpenHistory,
+                    onCheckForUpdates: onCheckForUpdates
                 )
             } else {
                 Color.clear.frame(width: 320, height: 1)
@@ -118,7 +148,7 @@ private extension NSImage {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     // Internal (not private) so DIBarApp+Debug.swift can drive the app.
     var appState: AppState!
     private var statusItem: NSStatusItem!
@@ -127,19 +157,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastLabelKey: String?
     private var speakerAnimationTimer: Timer?
     private let panelPresentation = PanelPresentationState()
+    private let updatePresentation = UpdatePresentationState()
 
     // Sparkle owns the whole update pipeline (feed check, download, and the
     // out-of-sandbox install via its Installer XPC service). Starting it here
     // schedules the automatic background checks.
-    private let updaterController = SPUStandardUpdaterController(
+    private lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
-        userDriverDelegate: nil
+        userDriverDelegate: self
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prefs migrates itself lazily on first access, so no ordering here.
         appState = AppState()
+        _ = updaterController
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
@@ -173,10 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onOpenHistory: { [weak self] in
                     self?.showHistoryWindow()
+                },
+                onCheckForUpdates: { [weak self] in
+                    self?.updaterController.checkForUpdates(nil)
                 }
             )
                 .environment(appState)
                 .environment(panelPresentation)
+                .environment(updatePresentation)
         )
         hosting.sizingOptions = .preferredContentSize
         panel.contentViewController = hosting
@@ -286,6 +322,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         stopSpeakerAnimationClock()
         appState?.historyRecorder.appWillTerminate()
+    }
+
+    // MARK: - Sparkle reminders
+
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem,
+        andInImmediateFocus immediateFocus: Bool
+    ) -> Bool {
+        UpdateReminderPolicy.shouldLetSparklePresent(immediateFocus: immediateFocus)
+    }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool,
+        forUpdate update: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        guard UpdateReminderPolicy.shouldShowBadge(
+            handleShowingUpdate: handleShowingUpdate,
+            userInitiated: state.userInitiated
+        ) else { return }
+        updatePresentation.show(version: update.displayVersionString)
+    }
+
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        updatePresentation.clear()
+    }
+
+    func standardUserDriverWillFinishUpdateSession() {
+        updatePresentation.clear()
     }
 
     @objc func togglePanel(_ sender: Any?) {
@@ -401,9 +468,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let glyph = appState.menuBarShowPlayState
             ? MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
             : MenuBarLabelRenderer.PlaybackGlyph.none
-        let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)"
+        let showsUpdateBadge = updatePresentation.availableVersion != nil
+        let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)|\(showsUpdateBadge)"
         guard key != lastLabelKey else { return }
         lastLabelKey = key
-        button.image = MenuBarLabelRenderer.labelImage(line1: line1, line2: line2, glyph: glyph)
+        button.image = MenuBarLabelRenderer.labelImage(
+            line1: line1,
+            line2: line2,
+            glyph: glyph,
+            showsUpdateBadge: showsUpdateBadge
+        )
+        button.toolTip = showsUpdateBadge
+            ? "A DIBar update is available"
+            : nil
     }
 }

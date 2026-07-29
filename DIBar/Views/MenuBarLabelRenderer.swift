@@ -34,7 +34,12 @@ enum MenuBarLabelRenderer {
         return .none
     }
 
-    static func labelImage(line1: String?, line2: String?, glyph: PlaybackGlyph) -> NSImage {
+    static func labelImage(
+        line1: String?,
+        line2: String?,
+        glyph: PlaybackGlyph,
+        showsUpdateBadge: Bool = false
+    ) -> NSImage {
         // Layout: [symbol][symbolGap][icon][gap][text lines]
         var symbol: NSImage?
         if let symbolName = glyph.symbolName {
@@ -105,6 +110,21 @@ enum MenuBarLabelRenderer {
             }
             if let icon = NSImage(named: "MenuBarIcon") {
                 icon.draw(in: NSRect(x: iconX, y: (height - iconSide) / 2, width: iconSide, height: iconSide))
+            }
+            if showsUpdateBadge {
+                let badgeRect = NSRect(
+                    x: iconX + iconSide - 5,
+                    y: (height + iconSide) / 2 - 5,
+                    width: 5,
+                    height: 5
+                )
+                // Punch out a one-point halo so the template badge remains
+                // legible even when it overlaps an opaque part of the icon.
+                context.compositingOperation = .clear
+                NSBezierPath(ovalIn: badgeRect.insetBy(dx: -1, dy: -1)).fill()
+                context.compositingOperation = .sourceOver
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: badgeRect).fill()
             }
             for (text, point) in texts {
                 text.draw(at: point)
