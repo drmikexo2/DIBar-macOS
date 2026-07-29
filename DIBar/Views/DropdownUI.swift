@@ -87,7 +87,7 @@ extension View {
 /// stepped animation can be tested without instantiating SwiftUI views.
 enum SpeakerIndicatorPresentation {
     static let steadyWaveSymbol = "speaker.wave.2.fill"
-    private static let waveSymbols = [
+    static let waveSymbols = [
         "speaker.wave.1.fill",
         steadyWaveSymbol,
         "speaker.wave.3.fill",
@@ -111,30 +111,33 @@ enum SpeakerIndicatorPresentation {
 
     static func waveSymbol(waveFrame: Int, reduceMotion: Bool) -> String {
         guard !reduceMotion else { return steadyWaveSymbol }
-        let index = ((waveFrame % waveSymbols.count) + waveSymbols.count) % waveSymbols.count
-        return waveSymbols[index]
+        return waveSymbols[waveIndex(waveFrame: waveFrame, reduceMotion: false)]
+    }
+
+    static func waveIndex(waveFrame: Int, reduceMotion: Bool) -> Int {
+        guard !reduceMotion else { return 1 }
+        return ((waveFrame % waveSymbols.count) + waveSymbols.count) % waveSymbols.count
     }
 }
 
 /// Fixed-width trailing speaker slot: low-rate stepped blue waves while
 /// audible, a muted speaker while current-but-paused, empty otherwise.
-/// All instances share AppState's single clock; there is deliberately no
-/// symbolEffect or interpolated transition here.
+/// All instances share the panel's isolated clock; there is deliberately no
+/// symbolEffect, interpolated transition, or changing Image identity here.
 struct SpeakerIndicator: View {
-    @Environment(AppState.self) private var appState
+    @Environment(PanelPresentationState.self) private var panelPresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let isCurrent: Bool
     let isAudible: Bool
 
     var body: some View {
         Group {
-            if isCurrent && isAudible && appState.audioPlayer.isAudiblyPlaying {
-                Image(systemName: SpeakerIndicatorPresentation.waveSymbol(
-                    waveFrame: appState.speakerWaveFrame,
-                    reduceMotion: reduceMotion
-                ))
-                    .font(.caption2)
-                    .foregroundStyle(Color.accentColor)
+            if isCurrent && isAudible {
+                ZStack(alignment: .leading) {
+                    waveLayer(symbol: "speaker.wave.1.fill", index: 0)
+                    waveLayer(symbol: "speaker.wave.2.fill", index: 1)
+                    waveLayer(symbol: "speaker.wave.3.fill", index: 2)
+                }
             } else if isCurrent {
                 Image(systemName: "speaker.fill")
                     .font(.caption2)
@@ -148,5 +151,19 @@ struct SpeakerIndicator: View {
         // body and each successive wave at fixed x coordinates instead of
         // recentering the whole glyph on every step.
         .frame(width: 18, height: 14, alignment: .leading)
+    }
+
+    private func waveLayer(symbol: String, index: Int) -> some View {
+        Image(systemName: symbol)
+            .font(.caption2)
+            .foregroundStyle(Color.accentColor)
+            .opacity(activeWaveIndex == index ? 1 : 0)
+    }
+
+    private var activeWaveIndex: Int {
+        SpeakerIndicatorPresentation.waveIndex(
+            waveFrame: panelPresentation.speakerWaveFrame,
+            reduceMotion: reduceMotion
+        )
     }
 }

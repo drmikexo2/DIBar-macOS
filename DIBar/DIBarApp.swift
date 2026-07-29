@@ -55,6 +55,51 @@ struct PanelMaterial: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
+/// The panel's rapidly changing presentation state is deliberately separate
+/// from AppState. Speaker frames should invalidate only the indicator views,
+/// not every consumer of the application's long-lived model.
+@Observable
+@MainActor
+final class PanelPresentationState {
+    var isVisible = false
+    var speakerWaveFrame = 0
+}
+
+enum SpeakerAnimationPolicy {
+    static func shouldRun(
+        isPanelVisible: Bool,
+        isAudiblyPlaying: Bool,
+        reduceMotion: Bool
+    ) -> Bool {
+        isPanelVisible && isAudiblyPlaying && !reduceMotion
+    }
+}
+
+/// Removing MenuBarView from the hierarchy on close releases its SwiftUI
+/// display graph and disconnects TimelineView and playback observations. The
+/// tiny placeholder keeps the hosting controller valid without retaining the
+/// expensive hidden panel.
+private struct PanelRootView: View {
+    @Environment(PanelPresentationState.self) private var presentation
+    let onOpenSettings: () -> Void
+    let onOpenHistory: () -> Void
+
+    var body: some View {
+        Group {
+            if presentation.isVisible {
+                MenuBarView(
+                    onOpenSettings: onOpenSettings,
+                    onOpenHistory: onOpenHistory
+                )
+            } else {
+                Color.clear.frame(width: 320, height: 1)
+            }
+        }
+        .background(PanelMaterial(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
 private extension NSImage {
     /// Stretchable rounded-rect mask; shapes both the blur region and the
     /// window shadow (the same mechanism NSPopover uses).
@@ -80,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelTopLeft: NSPoint?
     private var lastLabelKey: String?
     private var speakerAnimationTimer: Timer?
+    private let panelPresentation = PanelPresentationState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prefs migrates itself lazily on first access, so no ordering here.
@@ -111,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let hosting = NSHostingController(
-            rootView: MenuBarView(
+            rootView: PanelRootView(
                 onOpenSettings: { [weak self] in
                     self?.showSettingsWindow()
                 },
@@ -120,8 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             )
                 .environment(appState)
-                .background(PanelMaterial(cornerRadius: 12))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .environment(panelPresentation)
         )
         hosting.sizingOptions = .preferredContentSize
         panel.contentViewController = hosting
@@ -241,6 +286,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openPanel() {
         guard let button = statusItem.button, let buttonWindow = button.window else { return }
+        panelPresentation.isVisible = true
+        panel.contentView?.layoutSubtreeIfNeeded()
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
 
         panel.layoutIfNeeded()
@@ -264,6 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePanel() {
         stopSpeakerAnimationClock()
+        panelPresentation.isVisible = false
         panelTopLeft = nil
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
@@ -289,9 +337,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncSpeakerAnimationClock() {
-        let shouldRun = panel.isVisible
-            && appState.audioPlayer.isAudiblyPlaying
-            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let shouldRun = SpeakerAnimationPolicy.shouldRun(
+            isPanelVisible: panelPresentation.isVisible && panel.isVisible,
+            isAudiblyPlaying: appState.audioPlayer.isAudiblyPlaying,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
 
         guard shouldRun else {
             stopSpeakerAnimationClock()
@@ -299,15 +349,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard speakerAnimationTimer == nil else { return }
 
-        appState.speakerWaveFrame = 0
+        panelPresentation.speakerWaveFrame = 0
         let timer = Timer(
             timeInterval: SpeakerIndicatorPresentation.waveFrameInterval,
             repeats: true
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.speakerAnimationTimer != nil else { return }
-                self.appState.speakerWaveFrame =
-                    (self.appState.speakerWaveFrame + 1) % SpeakerIndicatorPresentation.waveFrameCount
+                self.panelPresentation.speakerWaveFrame =
+                    (self.panelPresentation.speakerWaveFrame + 1)
+                    % SpeakerIndicatorPresentation.waveFrameCount
             }
         }
         timer.tolerance = 0.1

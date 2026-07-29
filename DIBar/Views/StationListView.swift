@@ -397,7 +397,7 @@ struct ChannelRow: View {
                 Spacer()
 
                 // Fixed-width slots keep the star column aligned on every row
-                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isPlaying)
+                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isAudiblyPlaying)
 
                 Group {
                     if isFavorite || isHovered {
@@ -461,7 +461,7 @@ struct RecentRow: View {
                 }
                 Spacer()
 
-                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isPlaying)
+                SpeakerIndicator(isCurrent: isPlaying, isAudible: appState.audioPlayer.isAudiblyPlaying)
 
                 Group {
                     if isFavorite || isHovered {

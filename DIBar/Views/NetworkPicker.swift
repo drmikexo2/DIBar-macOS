@@ -69,7 +69,10 @@ private struct NetworkRow: View {
 
             Spacer()
 
-            SpeakerIndicator(isCurrent: isPlaying, isAudible: isPlaying)
+            SpeakerIndicator(
+                isCurrent: isPlaying,
+                isAudible: appState.audioPlayer.isAudiblyPlaying
+            )
         }
     }
 }

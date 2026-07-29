@@ -61,4 +61,93 @@ final class SpeakerIndicatorTests: XCTestCase {
             )
         }
     }
+
+    func testWaveLayersKeepStableIdentities() {
+        XCTAssertEqual(SpeakerIndicatorPresentation.waveSymbols, [
+            "speaker.wave.1.fill",
+            "speaker.wave.2.fill",
+            "speaker.wave.3.fill",
+        ])
+        XCTAssertEqual(
+            (0..<6).map {
+                SpeakerIndicatorPresentation.waveIndex(
+                    waveFrame: $0,
+                    reduceMotion: false
+                )
+            },
+            [0, 1, 2, 0, 1, 2]
+        )
+    }
+
+    func testSpeakerClockOnlyRunsForVisibleAudibleMotion() {
+        XCTAssertTrue(SpeakerAnimationPolicy.shouldRun(
+            isPanelVisible: true,
+            isAudiblyPlaying: true,
+            reduceMotion: false
+        ))
+        XCTAssertFalse(SpeakerAnimationPolicy.shouldRun(
+            isPanelVisible: false,
+            isAudiblyPlaying: true,
+            reduceMotion: false
+        ))
+        XCTAssertFalse(SpeakerAnimationPolicy.shouldRun(
+            isPanelVisible: true,
+            isAudiblyPlaying: false,
+            reduceMotion: false
+        ))
+        XCTAssertFalse(SpeakerAnimationPolicy.shouldRun(
+            isPanelVisible: true,
+            isAudiblyPlaying: true,
+            reduceMotion: true
+        ))
+    }
+}
+
+final class ArtCacheTests: XCTestCase {
+    func testCacheUsesBoundedDecodedMemoryBudget() async {
+        await MainActor.run {
+            XCTAssertEqual(ArtCache.countLimit, 48)
+            XCTAssertEqual(ArtCache.totalCostLimit, 16 * 1024 * 1024)
+            XCTAssertEqual(
+                ArtCache.imageCost(
+                    pixelWidth: 300,
+                    pixelHeight: 300,
+                    downloadedByteCount: 24_000
+                ),
+                360_000
+            )
+        }
+    }
+
+    func testImageCostFallsBackToDownloadedBytes() async {
+        await MainActor.run {
+            XCTAssertEqual(
+                ArtCache.imageCost(
+                    pixelWidth: 0,
+                    pixelHeight: 300,
+                    downloadedByteCount: 24_000
+                ),
+                24_000
+            )
+            XCTAssertEqual(
+                ArtCache.imageCost(
+                    pixelWidth: Int.max,
+                    pixelHeight: Int.max,
+                    downloadedByteCount: 24_000
+                ),
+                24_000
+            )
+        }
+    }
+
+    func testArtworkSessionDoesNotDuplicateURLCache() async {
+        await MainActor.run {
+            let configuration = ArtCache.makeSessionConfiguration()
+            XCTAssertNil(configuration.urlCache)
+            XCTAssertEqual(
+                configuration.requestCachePolicy,
+                .reloadIgnoringLocalCacheData
+            )
+        }
+    }
 }

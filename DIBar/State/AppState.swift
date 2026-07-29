@@ -134,11 +134,6 @@ final class AppState {
     var errorMessage: String?
     var searchFieldFocused: Bool = false
     var artworkExpanded: Bool = false
-    /// Shared frame for the low-rate playing-speaker animation. AppDelegate
-    /// advances this only while the panel is visible and audio is audible;
-    /// every visible indicator reads the same frame instead of owning an
-    /// independent animation clock.
-    var speakerWaveFrame: Int = 0
     // Menu bar label components. "Site" in the UI, Network in code.
     // All components default ON for new installs; existing installs that never
     // touched them are pinned off by the Prefs v2 migration.

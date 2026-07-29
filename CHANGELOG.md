@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.2
+
+### Memory
+
+- Bounded the artwork cache by decoded image size instead of compressed download size, capped it at 16 MiB and 48 images, and stopped retaining duplicate URL-cache responses.
+- The hidden menu panel now releases its SwiftUI view graph, elapsed-time timeline, and playback observations instead of retaining them for the life of the app.
+- Isolated the speaker animation from the application model and kept all three symbol layers structurally stable, preventing long-running SwiftUI allocation growth while the panel is open.
+
+### macOS integration
+
+- On macOS 26, channel search no longer launches an unnecessary Security Code AutoFill helper. Login credential AutoFill remains available when the sign-in screen is actually shown.
+
 ## 1.3.1
 
 ### Performance

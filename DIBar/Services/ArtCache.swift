@@ -6,14 +6,56 @@ import SwiftUI
 /// art across track repeats. In-flight requests are deduped.
 @MainActor
 enum ArtCache {
+    static let countLimit = 48
+    static let totalCostLimit = 16 * 1024 * 1024
+
     private static let cache: NSCache<NSURL, NSImage> = {
         let cache = NSCache<NSURL, NSImage>()
-        cache.countLimit = 200
-        cache.totalCostLimit = 20 * 1024 * 1024
+        cache.countLimit = countLimit
+        cache.totalCostLimit = totalCostLimit
         return cache
     }()
 
+    /// Artwork already has its own bounded image cache, so using the shared
+    /// URL cache would retain a second copy of every response.
+    private static let session = URLSession(configuration: makeSessionConfiguration())
     private static var inflight: [URL: Task<NSImage?, Never>] = [:]
+
+    static func makeSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return configuration
+    }
+
+    /// NSImage commonly retains a compressed representation and lazily
+    /// materializes decoded pixels. Charge the larger of those two costs so
+    /// NSCache's limit describes the real working set rather than JPEG size.
+    static func imageCost(
+        pixelWidth: Int,
+        pixelHeight: Int,
+        downloadedByteCount: Int
+    ) -> Int {
+        let downloaded = max(downloadedByteCount, 0)
+        guard pixelWidth > 0, pixelHeight > 0 else { return downloaded }
+
+        let (pixels, pixelOverflow) = pixelWidth.multipliedReportingOverflow(by: pixelHeight)
+        guard !pixelOverflow else { return downloaded }
+        let (decodedBytes, byteOverflow) = pixels.multipliedReportingOverflow(by: 4)
+        guard !byteOverflow else { return downloaded }
+        return max(downloaded, decodedBytes)
+    }
+
+    private static func imageCost(for image: NSImage, downloadedByteCount: Int) -> Int {
+        let largestRepresentation = image.representations.max {
+            $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh
+        }
+        return imageCost(
+            pixelWidth: largestRepresentation?.pixelsWide ?? 0,
+            pixelHeight: largestRepresentation?.pixelsHigh ?? 0,
+            downloadedByteCount: downloadedByteCount
+        )
+    }
 
     static func cached(_ url: URL) -> NSImage? {
         cache.object(forKey: url as NSURL)
@@ -23,16 +65,19 @@ enum ArtCache {
         if let hit = cached(url) { return hit }
         if let pending = inflight[url] { return await pending.value }
         let task = Task { () -> NSImage? in
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
+            guard let (data, _) = try? await session.data(from: url),
                   let image = NSImage(data: data)
             else { return nil }
-            cache.setObject(image, forKey: url as NSURL, cost: data.count)
+            cache.setObject(
+                image,
+                forKey: url as NSURL,
+                cost: imageCost(for: image, downloadedByteCount: data.count)
+            )
             return image
         }
         inflight[url] = task
-        let image = await task.value
-        inflight[url] = nil
-        return image
+        defer { inflight[url] = nil }
+        return await task.value
     }
 }
 
