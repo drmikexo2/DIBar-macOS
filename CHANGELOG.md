@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1
+
+### Settings
+
+- Command-Comma now opens DIBar Settings. It previously opened an empty window.
+- Check for updates is a standard button now, matching the Last.fm connect button instead of a custom chip.
+
+### Menu bar
+
+- New installs no longer show the site name in the menu bar, leaving play state, channel, artist, and song. Anyone who already picked their own chips keeps that choice.
+
 ## 1.4.0
 
 ### Automatic updates
