@@ -13,8 +13,22 @@ struct DIBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
+        // `App` demands at least one Scene and Settings is the only one that
+        // does not open a window at launch, so it stands in as a placeholder.
+        // Its EmptyView is never shown: replacing the .appSettings group
+        // detaches ⌘, from the placeholder and points it at the AppKit
+        // settings window, which needs presentAuxiliaryWindow's LSUIElement
+        // activation handling and closePanel's status-item bookkeeping.
         Settings {
             EmptyView()
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    delegate.showSettingsWindow()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }
