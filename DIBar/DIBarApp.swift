@@ -198,7 +198,7 @@ private extension NSImage {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate,
-                         @preconcurrency SPUUpdaterDelegate {
+                         SPUUpdaterDelegate {
     // Internal (not private) so DIBarApp+Debug.swift can drive the app.
     var appState: AppState!
     private var statusItem: NSStatusItem!

@@ -81,6 +81,29 @@ If appcast generation fails before its commit, the trap restores the last
 published `appcast.xml`, preventing a partial feed from remaining in the
 working tree.
 
+## Smoke testing the update path
+
+Unit tests cannot cover installation: that path only runs when a real Sparkle
+installer replaces a real bundle. Before shipping anything that touches update
+handling, run:
+
+```bash
+scripts/smoke-update.sh                      # assert recovery works
+scripts/smoke-update.sh --baseline <ref>     # also assert the test detects the bug
+```
+
+It builds a fake 2.0 update, serves a signed appcast from `127.0.0.1`, kills the
+app the moment the update is extracted (what a reboot looks like to Sparkle),
+relaunches, and requires the app to end up on 2.0. Everything runs under the
+throwaway bundle identifier `com.di-fm-menubar.smoke`, so it has its own
+container and preferences and cannot disturb an installed DIBar. Nothing is
+published: no tag, no GitHub release, no change to `appcast.xml`.
+
+Pass `--baseline <ref>` to first run the same scenario against a commit from
+before the fix and require it to *fail* to recover. A test that cannot fail
+proves nothing, so use it whenever the recovery logic changes. `KEEP_WORK_DIR=1`
+preserves the build and feed for inspection when something goes wrong.
+
 ## Release notes style
 
 Plain text prose. No em-dashes, no emojis. Written as user-facing changes,
