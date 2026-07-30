@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+
+### Automatic updates
+
+- Downloaded updates now survive an interrupted install or Mac restart and install automatically the next time DIBar is idle.
+- DIBar waits to install while audio is playing or one of its windows is open, then relaunches as soon as it is safe.
+- A ready update stays visible with a Restart action instead of being lost behind automatic playback.
+- Automatic playback at launch pauses for a pending update, while manually starting a station still takes priority.
+
 ## 1.4.1
 
 ### Settings

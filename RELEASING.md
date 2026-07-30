@@ -92,12 +92,15 @@ scripts/smoke-update.sh                      # assert recovery works
 scripts/smoke-update.sh --baseline <ref>     # also assert the test detects the bug
 ```
 
-It builds a fake 2.0 update, serves a signed appcast from `127.0.0.1`, kills the
-app the moment the update is extracted (what a reboot looks like to Sparkle),
-relaunches, and requires the app to end up on 2.0. Everything runs under the
-throwaway bundle identifier `com.di-fm-menubar.smoke`, so it has its own
-container and preferences and cannot disturb an installed DIBar. Nothing is
-published: no tag, no GitHub release, no change to `appcast.xml`.
+It builds a fake 2.0 update, serves a signed appcast from `127.0.0.1`, holds
+DIBar busy long enough to kill it after the update is staged (what a reboot
+looks like to Sparkle), then relaunches idle and requires the app to recover,
+install, and relaunch on 2.0 without a prompt or graceful-quit fallback.
+It also starts from 1.4.1 once more and requires an ordinary idle background
+update to install automatically. Everything runs under the throwaway bundle identifier
+`com.di-fm-menubar.smoke`, so it has its own container and preferences and
+cannot disturb an installed DIBar. Nothing is published: no tag, no GitHub
+release, no change to `appcast.xml`.
 
 Pass `--baseline <ref>` to first run the same scenario against a commit from
 before the fix and require it to *fail* to recover. A test that cannot fail

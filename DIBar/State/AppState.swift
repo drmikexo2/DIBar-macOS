@@ -10,6 +10,44 @@ struct NetworkData {
     var favoritesLoadFailed: Bool = false
 }
 
+/// One-shot gate between launch bootstrap and update recovery. Loading account
+/// and station data continues normally while suppressed; only the automatic
+/// request to start the saved station is deferred. An explicit play discards
+/// that deferred request because the user's newer choice wins.
+struct AutomaticPlaybackRestorePolicy {
+    private(set) var isSuppressed: Bool
+    private(set) var restoreWasDeferred = false
+
+    init(isSuppressed: Bool = false) {
+        self.isSuppressed = isSuppressed
+    }
+
+    mutating func requestRestore() -> Bool {
+        guard !isSuppressed else {
+            restoreWasDeferred = true
+            return false
+        }
+        return true
+    }
+
+    mutating func suppress() {
+        isSuppressed = true
+    }
+
+    mutating func noteExplicitPlayback() {
+        restoreWasDeferred = false
+    }
+
+    /// Returns true when releasing the gate should perform the deferred
+    /// automatic restore now.
+    mutating func release() -> Bool {
+        isSuppressed = false
+        guard restoreWasDeferred else { return false }
+        restoreWasDeferred = false
+        return true
+    }
+}
+
 @Observable
 @MainActor
 final class AppState {
@@ -41,6 +79,7 @@ final class AppState {
 
     // Playback
     let audioPlayer = AudioPlayer()
+    @ObservationIgnored private var automaticPlaybackRestorePolicy: AutomaticPlaybackRestorePolicy
 
     // Listening history
     let historyRecorder: HistoryRecorder
@@ -197,7 +236,10 @@ final class AppState {
 
     // MARK: - Lifecycle
 
-    init() {
+    init(suppressAutomaticPlaybackRestore: Bool = false) {
+        automaticPlaybackRestorePolicy = AutomaticPlaybackRestorePolicy(
+            isSuppressed: suppressAutomaticPlaybackRestore
+        )
         historyRecorder = HistoryRecorder(player: audioPlayer)
         trackNotifier = TrackNotifier(player: audioPlayer)
         scrobbler = Scrobbler(recorder: historyRecorder)
@@ -356,6 +398,11 @@ final class AppState {
     }
 
     func playChannel(_ channel: Channel, on network: Network) {
+        automaticPlaybackRestorePolicy.noteExplicitPlayback()
+        startPlayback(channel, on: network)
+    }
+
+    private func startPlayback(_ channel: Channel, on network: Network) {
         guard let key = listenKey,
               let url = DIClient.streamURL(channelKey: channel.key, listenKey: key, quality: selectedQuality, network: network)
         else { return }
@@ -364,6 +411,19 @@ final class AppState {
         recentStationsStore.record(channel, network: network)
         log.info("playChannel: \(channel.name) on \(network.rawValue) -> \(url)")
         audioPlayer.play(channel: channel, streamURL: url, network: network)
+    }
+
+    /// Prevent launch bootstrap from starting the saved station while an
+    /// already-staged update is being recovered.
+    func suppressAutomaticPlaybackRestore() {
+        automaticPlaybackRestorePolicy.suppress()
+    }
+
+    /// Release a recovery gate. If bootstrap reached the restore point while
+    /// suppressed, perform it once now unless explicit playback superseded it.
+    func releaseAutomaticPlaybackRestore() {
+        guard automaticPlaybackRestorePolicy.release() else { return }
+        restoreSavedStationIfNeeded()
     }
 
     /// Hotkey actions: jump to the next/previous favorite (alphabetical,
@@ -549,6 +609,10 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
+        guard automaticPlaybackRestorePolicy.requestRestore() else {
+            log.info("restoreSavedStationIfNeeded: deferred for pending update")
+            return
+        }
         guard let channelId = Prefs.int(.lastStationId, network: selectedNetwork) else { return }
         guard let channel = channels.first(where: { $0.id == channelId }) else {
             log.warning("restoreSavedStationIfNeeded: saved station id=\(channelId) not found on \(self.selectedNetwork.rawValue)")
@@ -556,7 +620,7 @@ final class AppState {
         }
 
         log.info("restoreSavedStationIfNeeded: restoring '\(channel.name, privacy: .public)' on \(self.selectedNetwork.rawValue)")
-        playChannel(channel)
+        startPlayback(channel, on: selectedNetwork)
     }
 
     private static let readableDateFormatter: DateFormatter = {

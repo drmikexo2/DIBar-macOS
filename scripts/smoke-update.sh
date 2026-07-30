@@ -7,8 +7,9 @@
 # otherwise resumes only by probing for a live installer process, so killing
 # the app between extraction and install strands the update until the next
 # scheduled check 24 hours later. This script reproduces exactly that: it
-# serves a fake 2.0 update from localhost, kills the app the moment the update
-# is extracted, relaunches, and asserts the app ends up on 2.0.
+# serves a fake 2.0 update from localhost, holds the first launch busy long
+# enough to kill it after extraction, relaunches idle, and asserts recovery
+# installs and relaunches onto 2.0 without a prompt or graceful quit.
 #
 # --baseline <ref> first runs the same scenario against a pre-fix commit and
 # requires it to FAIL to recover. Without that control a passing run proves
@@ -141,6 +142,7 @@ build_app() {
         PRODUCT_BUNDLE_IDENTIFIER="$SMOKE_ID" \
         MARKETING_VERSION="$version" \
         CURRENT_PROJECT_VERSION="$build" \
+        'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG' \
         build -quiet >&2 ) || fail "build failed for $source_dir ($version)"
 
     rm -rf -- "$destination"
@@ -168,17 +170,10 @@ extracted_update_exists() {
     compgen -G "$HOME/Library/Caches/$SMOKE_ID"*"/org.sparkle-project.Sparkle/Installation/*/*/DIBar.app" >/dev/null
 }
 
-# Recovery asks before installing, so the test has to answer. Without this the
-# app sits on the modal forever and the run times out.
-click_install_and_relaunch() {
-    osascript -e 'tell application "System Events" to tell process "DIBar" to click button "Install and Relaunch" of window 1' \
-        >/dev/null 2>&1
-}
-
-prompt_was_logged() {
+ready_was_logged() {
     /usr/bin/log show --predicate \
         'subsystem == "com.dibar" AND category == "Updates"' \
-        --last 3m --info --style compact 2>/dev/null | grep -q "was downloaded but not installed"
+        --last 3m --info --style compact 2>/dev/null | grep -q "ready; waiting for DIBar to become idle"
 }
 
 recheck_was_logged() {
@@ -257,10 +252,18 @@ run_scenario() {
     # Fresh preferences mean no SULastCheckTime, so Sparkle checks right after
     # launch. SUEnableAutomaticChecks in the plist suppresses the first-run
     # permission prompt.
-    open "$INSTALL_APP"
+    # DEBUG is enabled only in this throwaway build. The launch argument makes
+    # DIBar retain the real Sparkle installer block rather than immediately
+    # relaunching, giving the test a deterministic interruption point.
+    open "$INSTALL_APP" --args --dibar-update-smoke-busy
     if ! wait_for 180 "extraction" extracted_update_exists; then
         diagnose_stalled_check
         fail "$label: update never downloaded and extracted"
+    fi
+    if wait_for 15 "ready state" ready_was_logged; then
+        info "update coordinator is waiting for idle"
+    else
+        info "no DIBar ready-state log (expected on a pre-fix baseline)"
     fi
     info "update extracted; killing the app mid-flight"
 
@@ -272,22 +275,29 @@ run_scenario() {
     info "still $OLD_VERSION after the interruption, as expected"
 
     open "$INSTALL_APP"
-    if wait_for 90 "recovery prompt" prompt_was_logged; then
-        info "recovery prompt logged"
-        # Answer the modal. The pre-fix baseline never shows one, so this is a
-        # no-op there and the scenario still ends on the old version.
-        wait_for 30 "install button" click_install_and_relaunch && info "clicked Install and Relaunch"
+    if wait_for 90 "recovery recheck" recheck_was_logged; then
+        info "recovery recheck logged"
     else
-        info "no recovery prompt"
+        info "no recovery recheck (expected on a pre-fix baseline)"
     fi
 
     wait_for 120 "install" installed_is_new_version || true
-    # Fall back to a graceful quit, which completes an install that was staged
-    # for quit rather than performed immediately.
-    if ! installed_is_new_version; then
-        osascript -e "tell application id \"$SMOKE_ID\" to quit" >/dev/null 2>&1 || true
-        wait_for 60 "install on quit" installed_is_new_version || true
-    fi
+    sleep 3
+    kill_smoke_processes
+
+    app_version "$INSTALL_APP"
+}
+
+# A normal scheduled update should use the same idle installation path without
+# needing a prior pending record.
+run_idle_scenario() {
+    say "Scenario: routine idle update, expected to install automatically"
+    reset_smoke_state
+    build_app "$PROJECT_DIR" "dd-idle" "$OLD_VERSION" "$OLD_BUILD" "$INSTALL_APP"
+    info "installed $(app_version "$INSTALL_APP")"
+
+    open "$INSTALL_APP"
+    wait_for 180 "routine idle install" installed_is_new_version || true
     sleep 3
     kill_smoke_processes
 
@@ -315,10 +325,12 @@ if [[ -n "$BASELINE_REF" ]]; then
 fi
 
 FIXED_RESULT=$(run_scenario "$PROJECT_DIR" "dd-fixed" "current tree, expected to RECOVER to $NEW_VERSION")
+IDLE_RESULT=$(run_idle_scenario)
 
 say "Result"
 [[ -n "$BASELINE_REF" ]] && info "baseline ($BASELINE_REF): ended on ${BASELINE_RESULT}"
 info "current tree: ended on ${FIXED_RESULT}"
+info "routine idle update: ended on ${IDLE_RESULT}"
 
 if [[ "$FIXED_RESULT" != "$NEW_VERSION" ]]; then
     printf 'FAIL: interrupted update did not recover (ended on %s, wanted %s)\n' \
@@ -326,5 +338,11 @@ if [[ "$FIXED_RESULT" != "$NEW_VERSION" ]]; then
     exit 1
 fi
 
+if [[ "$IDLE_RESULT" != "$NEW_VERSION" ]]; then
+    printf 'FAIL: routine idle update did not install automatically (ended on %s, wanted %s)\n' \
+        "$IDLE_RESULT" "$NEW_VERSION" >&2
+    exit 1
+fi
+
 [[ "$EXIT_STATUS" -eq 0 ]] || exit "$EXIT_STATUS"
-say "PASS: an interrupted update recovers on the next launch"
+say "PASS: interrupted recovery and routine idle installation both work"

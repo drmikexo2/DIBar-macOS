@@ -126,7 +126,9 @@ final class UpdateReminderTests: XCTestCase {
 
     func testResumesWhenAStagedUpdateIsNotTheRunningVersion() {
         XCTAssertTrue(PendingUpdatePolicy.shouldResume(
+            pendingBuild: "10",
             pendingVersion: "1.4.2",
+            runningBuild: "9",
             runningVersion: "1.4.1",
             attempts: 0
         ))
@@ -134,12 +136,16 @@ final class UpdateReminderTests: XCTestCase {
 
     func testDoesNotResumeWhenNothingIsStaged() {
         XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingBuild: nil,
             pendingVersion: nil,
+            runningBuild: "9",
             runningVersion: "1.4.1",
             attempts: 0
         ))
         XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingBuild: nil,
             pendingVersion: "",
+            runningBuild: "9",
             runningVersion: "1.4.1",
             attempts: 0
         ))
@@ -147,24 +153,51 @@ final class UpdateReminderTests: XCTestCase {
 
     func testDoesNotResumeOnceTheStagedVersionIsRunning() {
         XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingBuild: "10",
             pendingVersion: "1.4.2",
+            runningBuild: "10",
             runningVersion: "1.4.2",
             attempts: 0
         ))
-        XCTAssertTrue(PendingUpdatePolicy.didInstall(pendingVersion: "1.4.2", runningVersion: "1.4.2"))
-        XCTAssertFalse(PendingUpdatePolicy.didInstall(pendingVersion: "1.4.2", runningVersion: "1.4.1"))
-        XCTAssertFalse(PendingUpdatePolicy.didInstall(pendingVersion: nil, runningVersion: "1.4.2"))
+        XCTAssertTrue(PendingUpdatePolicy.didInstall(
+            pendingBuild: "10",
+            pendingVersion: "1.4.2",
+            runningBuild: "10",
+            runningVersion: "1.4.2"
+        ))
+        XCTAssertFalse(PendingUpdatePolicy.didInstall(
+            pendingBuild: "10",
+            pendingVersion: "1.4.2",
+            runningBuild: "9",
+            runningVersion: "1.4.2"
+        ))
+        XCTAssertTrue(PendingUpdatePolicy.didInstall(
+            pendingBuild: nil,
+            pendingVersion: "1.4.2",
+            runningBuild: "10",
+            runningVersion: "1.4.2"
+        ))
+        XCTAssertFalse(PendingUpdatePolicy.didInstall(
+            pendingBuild: nil,
+            pendingVersion: nil,
+            runningBuild: "10",
+            runningVersion: "1.4.2"
+        ))
     }
 
     func testGivesUpAfterRepeatedFailedAttempts() {
         let last = PendingUpdatePolicy.maxAttempts - 1
         XCTAssertTrue(PendingUpdatePolicy.shouldResume(
+            pendingBuild: "10",
             pendingVersion: "1.4.2",
+            runningBuild: "9",
             runningVersion: "1.4.1",
             attempts: last
         ))
         XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingBuild: "10",
             pendingVersion: "1.4.2",
+            runningBuild: "9",
             runningVersion: "1.4.1",
             attempts: PendingUpdatePolicy.maxAttempts
         ))
@@ -180,12 +213,48 @@ final class UpdateReminderTests: XCTestCase {
     func testPresentationStateShowsAndClearsAvailableVersion() async {
         await MainActor.run {
             let state = UpdatePresentationState()
-            XCTAssertNil(state.availableVersion)
-            state.show(version: "1.4")
-            XCTAssertEqual(state.availableVersion, "1.4")
+            XCTAssertNil(state.phase)
+            state.showAvailable(version: "1.4")
+            XCTAssertEqual(state.phase, .available(version: "1.4"))
+            state.showReady(version: "1.4")
+            state.clearAvailable()
+            XCTAssertEqual(state.phase, .ready(version: "1.4"))
             state.clear()
-            XCTAssertNil(state.availableVersion)
+            XCTAssertNil(state.phase)
         }
+    }
+
+    func testAutomaticInstallRequiresNoPlaybackOrVisibleUI() {
+        XCTAssertTrue(UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: false,
+            isPanelVisible: false,
+            isSettingsVisible: false,
+            isHistoryVisible: false
+        ))
+        XCTAssertFalse(UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: true,
+            isPanelVisible: false,
+            isSettingsVisible: false,
+            isHistoryVisible: false
+        ))
+        XCTAssertFalse(UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: false,
+            isPanelVisible: true,
+            isSettingsVisible: false,
+            isHistoryVisible: false
+        ))
+        XCTAssertFalse(UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: false,
+            isPanelVisible: false,
+            isSettingsVisible: true,
+            isHistoryVisible: false
+        ))
+        XCTAssertFalse(UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: false,
+            isPanelVisible: false,
+            isSettingsVisible: false,
+            isHistoryVisible: true
+        ))
     }
 
     func testUpdateBadgePreservesMenuBarLabelDimensions() async {
@@ -205,6 +274,34 @@ final class UpdateReminderTests: XCTestCase {
             XCTAssertEqual(regular.size, badged.size)
             XCTAssertNotEqual(regular.tiffRepresentation, badged.tiffRepresentation)
         }
+    }
+}
+
+final class AutomaticPlaybackRestorePolicyTests: XCTestCase {
+    func testPendingUpdateDefersAndReleasesAutoplayOnce() {
+        var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
+
+        XCTAssertFalse(policy.requestRestore())
+        XCTAssertTrue(policy.restoreWasDeferred)
+        XCTAssertTrue(policy.release())
+        XCTAssertFalse(policy.release())
+        XCTAssertTrue(policy.requestRestore())
+    }
+
+    func testExplicitPlaybackSupersedesDeferredAutoplay() {
+        var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
+
+        XCTAssertFalse(policy.requestRestore())
+        policy.noteExplicitPlayback()
+        XCTAssertFalse(policy.release())
+    }
+
+    func testLateSuppressionStillGatesUpcomingAutoplay() {
+        var policy = AutomaticPlaybackRestorePolicy()
+
+        policy.suppress()
+        XCTAssertFalse(policy.requestRestore())
+        XCTAssertTrue(policy.release())
     }
 }
 

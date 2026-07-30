@@ -35,6 +35,7 @@ enum Prefs {
         case lastFMSessionKey = "lastfm_session_key"
         case lastFMUsername = "lastfm_username"
         case pendingUpdateVersion = "pending_update_version"
+        case pendingUpdateBuild = "pending_update_build"
         case pendingUpdateAttempts = "pending_update_attempts"
     }
 

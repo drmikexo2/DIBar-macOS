@@ -89,14 +89,67 @@ final class PanelPresentationState {
 @Observable
 @MainActor
 final class UpdatePresentationState {
-    private(set) var availableVersion: String?
+    enum Phase: Equatable {
+        case available(version: String)
+        case recovering(version: String)
+        case ready(version: String)
+        case failed(version: String)
 
-    func show(version: String) {
-        availableVersion = version
+        var version: String {
+            switch self {
+            case .available(let version), .recovering(let version),
+                 .ready(let version), .failed(let version):
+                version
+            }
+        }
+
+        var toolTip: String {
+            switch self {
+            case .available:
+                "A DIBar update is available"
+            case .recovering:
+                "DIBar is finishing an update"
+            case .ready:
+                "Restart DIBar to finish updating"
+            case .failed:
+                "A DIBar update could not finish"
+            }
+        }
+    }
+
+    private(set) var phase: Phase?
+
+    func showAvailable(version: String) {
+        // A gentle reminder must not overwrite a more advanced or failed
+        // state owned by DIBar's installation coordinator.
+        guard phase == nil || isAvailable else { return }
+        phase = .available(version: version)
+    }
+
+    func showRecovering(version: String) {
+        phase = .recovering(version: version)
+    }
+
+    func showReady(version: String) {
+        phase = .ready(version: version)
+    }
+
+    func showFailed(version: String) {
+        phase = .failed(version: version)
+    }
+
+    func clearAvailable() {
+        guard isAvailable else { return }
+        phase = nil
     }
 
     func clear() {
-        availableVersion = nil
+        phase = nil
+    }
+
+    private var isAvailable: Bool {
+        if case .available = phase { return true }
+        return false
     }
 }
 
@@ -122,6 +175,17 @@ enum UpdateReminderPolicy {
     }
 }
 
+enum UpdateInstallPolicy {
+    static func canInstallAutomatically(
+        isPlaying: Bool,
+        isPanelVisible: Bool,
+        isSettingsVisible: Bool,
+        isHistoryVisible: Bool
+    ) -> Bool {
+        !isPlaying && !isPanelVisible && !isSettingsVisible && !isHistoryVisible
+    }
+}
+
 /// Sparkle keeps a downloaded-but-uninstalled update only in memory
 /// (`SPUUpdater._resumableUpdate`) and otherwise resumes solely by probing for
 /// a still-running installer process. A restart between download and install
@@ -133,17 +197,45 @@ enum PendingUpdatePolicy {
     /// does not check on every launch forever.
     static let maxAttempts = 3
 
-    static func shouldResume(pendingVersion: String?, runningVersion: String, attempts: Int) -> Bool {
-        guard let pendingVersion, !pendingVersion.isEmpty else { return false }
-        // Equal versions mean the install already landed.
-        guard pendingVersion != runningVersion else { return false }
+    static func shouldResume(
+        pendingBuild: String?,
+        pendingVersion: String?,
+        runningBuild: String,
+        runningVersion: String,
+        attempts: Int
+    ) -> Bool {
+        guard hasPendingUpdate(pendingBuild: pendingBuild, pendingVersion: pendingVersion) else {
+            return false
+        }
+        guard !didInstall(
+            pendingBuild: pendingBuild,
+            pendingVersion: pendingVersion,
+            runningBuild: runningBuild,
+            runningVersion: runningVersion
+        ) else {
+            return false
+        }
         return attempts < maxAttempts
     }
 
-    /// True once the staged version is the one actually running.
-    static func didInstall(pendingVersion: String?, runningVersion: String) -> Bool {
+    /// True once the staged build is the one actually running. The display
+    /// version is a fallback for pending records made before build persistence
+    /// was added.
+    static func didInstall(
+        pendingBuild: String?,
+        pendingVersion: String?,
+        runningBuild: String,
+        runningVersion: String
+    ) -> Bool {
+        if let pendingBuild, !pendingBuild.isEmpty {
+            return pendingBuild == runningBuild
+        }
         guard let pendingVersion, !pendingVersion.isEmpty else { return false }
         return pendingVersion == runningVersion
+    }
+
+    static func hasPendingUpdate(pendingBuild: String?, pendingVersion: String?) -> Bool {
+        pendingBuild?.isEmpty == false || pendingVersion?.isEmpty == false
     }
 
     /// `didAbortWithError` also fires for the ordinary "already up to date"
@@ -199,6 +291,12 @@ private extension NSImage {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate,
                          SPUUpdaterDelegate {
+    private struct PendingInstallation {
+        let displayVersion: String
+        let buildVersion: String
+        let installNow: () -> Void
+    }
+
     // Internal (not private) so DIBarApp+Debug.swift can drive the app.
     var appState: AppState!
     private var statusItem: NSStatusItem!
@@ -208,6 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
     private var speakerAnimationTimer: Timer?
     private let panelPresentation = PanelPresentationState()
     private let updatePresentation = UpdatePresentationState()
+    private var pendingInstallation: PendingInstallation?
+    private var isInstallingUpdate = false
+    private var isRecoveringPendingUpdate = false
 
     // Sparkle owns the whole update pipeline (feed check, download, and the
     // out-of-sandbox install via its Installer XPC service). Starting it here
@@ -219,10 +320,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Prefs migrates itself lazily on first access, so no ordering here.
-        appState = AppState()
-        _ = updaterController
-        resumePendingUpdateIfNeeded()
+        // A pending update outranks automatic station restoration. AppState
+        // still bootstraps account and channel data; only autoplay waits.
+        appState = AppState(
+            suppressAutomaticPlaybackRestore: shouldRecoverPendingUpdateAtLaunch()
+        )
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
@@ -258,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
                     self?.showHistoryWindow()
                 },
                 onCheckForUpdates: { [weak self] in
-                    self?.updaterController.checkForUpdates(nil)
+                    self?.performUpdateAction()
                 }
             )
                 .environment(appState)
@@ -302,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
 
         startLabelObservation()
         startSpeakerAnimationObservation()
+        startUpdateInstallObservation()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
@@ -312,6 +415,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         }
 
         setupDebugNotifications()
+
+        // Start Sparkle only after DIBar's UI and idle observers exist; a local
+        // feed can finish quickly enough to call the delegate during launch.
+        _ = updaterController
+        resumePendingUpdateIfNeeded()
     }
 
     // MARK: - Auxiliary windows
@@ -323,7 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         if settingsWindow == nil {
             let window = NSWindow(contentViewController: NSHostingController(
                 rootView: SettingsWindowView(onCheckForUpdates: { [weak self] in
-                    self?.updaterController.checkForUpdates(nil)
+                    self?.performUpdateAction()
                 }).environment(appState)
             ))
             window.title = "DIBar Settings"
@@ -331,6 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window
+            observeUpdateWindowClosing(window)
         }
         presentAuxiliaryWindow(settingsWindow!)
     }
@@ -346,8 +455,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             window.setContentSize(NSSize(width: 460, height: 480))
             window.center()
             historyWindow = window
+            observeUpdateWindowClosing(window)
         }
         presentAuxiliaryWindow(historyWindow!)
+    }
+
+    private func observeUpdateWindowClosing(_ window: NSWindow) {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.installPendingUpdateIfIdle() }
+        }
     }
 
     /// The status panel is already key and DIBar is active for normal clicks.
@@ -395,15 +515,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             handleShowingUpdate: handleShowingUpdate,
             userInitiated: state.userInitiated
         ) else { return }
-        updatePresentation.show(version: update.displayVersionString)
+        updatePresentation.showAvailable(version: update.displayVersionString)
     }
 
     func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
-        updatePresentation.clear()
+        updatePresentation.clearAvailable()
     }
 
     func standardUserDriverWillFinishUpdateSession() {
-        updatePresentation.clear()
+        updatePresentation.clearAvailable()
     }
 
     // MARK: - Update outcomes
@@ -412,42 +532,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
-    /// Set while a launch-time recovery is in flight, so that cycle prompts and
-    /// installs immediately instead of staging quietly for a quit.
-    private var isRecoveringPendingUpdate = false
+    private static var runningBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    }
+
+    private func shouldRecoverPendingUpdateAtLaunch() -> Bool {
+        PendingUpdatePolicy.shouldResume(
+            pendingBuild: Prefs.string(.pendingUpdateBuild),
+            pendingVersion: Prefs.string(.pendingUpdateVersion),
+            runningBuild: Self.runningBuild,
+            runningVersion: Self.runningVersion,
+            attempts: Prefs.int(.pendingUpdateAttempts) ?? 0
+        )
+    }
 
     /// An update that finished downloading but never installed leaves Sparkle
     /// with nothing to resume from after a relaunch, so ask it to check again
     /// now rather than waiting out the 24-hour schedule.
     private func resumePendingUpdateIfNeeded() {
-        let pending = Prefs.string(.pendingUpdateVersion)
-        let running = Self.runningVersion
+        let pendingBuild = Prefs.string(.pendingUpdateBuild)
+        let pendingVersion = Prefs.string(.pendingUpdateVersion)
+        guard PendingUpdatePolicy.hasPendingUpdate(
+            pendingBuild: pendingBuild,
+            pendingVersion: pendingVersion
+        ) else {
+            return
+        }
 
-        if PendingUpdatePolicy.didInstall(pendingVersion: pending, runningVersion: running) {
-            updateLog.info("Update to \(running, privacy: .public) installed; clearing pending state")
+        if PendingUpdatePolicy.didInstall(
+            pendingBuild: pendingBuild,
+            pendingVersion: pendingVersion,
+            runningBuild: Self.runningBuild,
+            runningVersion: Self.runningVersion
+        ) {
+            updateLog.info(
+                "Update to \(Self.runningVersion, privacy: .public) (\(Self.runningBuild, privacy: .public)) installed; clearing pending state"
+            )
             clearPendingUpdate()
             return
         }
 
         let attempts = Prefs.int(.pendingUpdateAttempts) ?? 0
         guard PendingUpdatePolicy.shouldResume(
-            pendingVersion: pending,
-            runningVersion: running,
+            pendingBuild: pendingBuild,
+            pendingVersion: pendingVersion,
+            runningBuild: Self.runningBuild,
+            runningVersion: Self.runningVersion,
             attempts: attempts
         ) else {
-            if let pending, !pending.isEmpty {
-                updateLog.error(
-                    "Update \(pending, privacy: .public) still not installed after \(attempts) attempts; giving up"
-                )
-            }
+            let displayVersion = pendingVersion ?? pendingBuild ?? "latest"
+            updateLog.error(
+                "Update \(displayVersion, privacy: .public) still not installed after \(attempts) attempts; waiting for manual retry"
+            )
+            updatePresentation.showFailed(version: displayVersion)
+            appState.releaseAutomaticPlaybackRestore()
             return
         }
 
-        guard let pending else { return }
+        let displayVersion = pendingVersion ?? pendingBuild ?? "latest"
         Prefs.set(attempts + 1, for: .pendingUpdateAttempts)
         isRecoveringPendingUpdate = true
+        updatePresentation.showRecovering(version: displayVersion)
         updateLog.info(
-            "Update \(pending, privacy: .public) was downloaded but not installed; rechecking (attempt \(attempts + 1))"
+            "Update \(displayVersion, privacy: .public) was downloaded but not installed; rechecking (attempt \(attempts + 1))"
         )
         // The background variant on purpose. checkForUpdates(_:) is the
         // user-initiated path and Sparkle rejects it here with
@@ -457,33 +604,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         updaterController.updater.checkForUpdatesInBackground()
     }
 
-    /// Sparkle will not ask on its own here. With SUAutomaticallyUpdate set,
-    /// its automatic driver never consults the user driver's presentation hook
-    /// and simply stages for a quit. So DIBar owns this one prompt, at launch,
-    /// where a stranded update is guaranteed to be noticed.
-    private func promptToInstallPendingUpdate(version: String, installNow: @escaping () -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "DIBar \(version) is ready to install"
-        alert.informativeText =
-            "This update was downloaded earlier but never finished installing. DIBar will relaunch."
-        alert.addButton(withTitle: "Install and Relaunch")
-        alert.addButton(withTitle: "Later")
-        NSApp.activate(ignoringOtherApps: true)
-
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            // The pending record stays, so the next launch asks again. Nothing
-            // is lost by declining, and the attempt count was already reset
-            // when the update staged, so declining cannot exhaust the retries.
-            updateLog.info("Install of \(version, privacy: .public) deferred; will ask again next launch")
-            return
-        }
-
-        updateLog.info("Installing \(version, privacy: .public) now")
-        installNow()
-    }
-
     private func clearPendingUpdate() {
         Prefs.set(nil, for: .pendingUpdateVersion)
+        Prefs.set(nil, for: .pendingUpdateBuild)
         Prefs.set(0, for: .pendingUpdateAttempts)
     }
 
@@ -491,24 +614,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         updateLog.info("Found update \(item.displayVersionString, privacy: .public)")
     }
 
+    func updater(
+        _ updater: SPUUpdater,
+        userDidMake choice: SPUUserUpdateChoice,
+        forUpdate item: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        guard choice == .skip else { return }
+        updateLog.info("User skipped \(item.displayVersionString, privacy: .public); clearing DIBar pending state")
+        pendingInstallation = nil
+        isRecoveringPendingUpdate = false
+        isInstallingUpdate = false
+        clearPendingUpdate()
+        updatePresentation.clear()
+        appState.releaseAutomaticPlaybackRestore()
+    }
+
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
         updateLog.info("No update available: \(error.localizedDescription, privacy: .public)")
         // Nothing is staged any more, so a recorded pending version is stale.
         clearPendingUpdate()
+        if isRecoveringPendingUpdate {
+            isRecoveringPendingUpdate = false
+            updatePresentation.clear()
+            appState.releaseAutomaticPlaybackRestore()
+        }
     }
 
     func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: any Error) {
         updateLog.error(
             "Failed to download \(item.displayVersionString, privacy: .public): \(error.localizedDescription, privacy: .public)"
         )
+        handleUpdateFailure()
     }
 
     func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
         updateLog.info("Extracted \(item.displayVersionString, privacy: .public); awaiting install")
         Prefs.set(item.displayVersionString, for: .pendingUpdateVersion)
+        Prefs.set(item.versionString, for: .pendingUpdateBuild)
         // Staging worked, so the pipeline is healthy and any further delay is
-        // the user's choice, not a failure. Resetting here keeps "Later" from
-        // burning through the retry budget and abandoning the update.
+        // no longer a recovery-check failure.
         Prefs.set(0, for: .pendingUpdateAttempts)
     }
 
@@ -521,22 +666,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         willInstallUpdateOnQuit item: SUAppcastItem,
         immediateInstallationBlock: @escaping () -> Void
     ) -> Bool {
-        guard isRecoveringPendingUpdate else {
-            updateLog.info("\(item.displayVersionString, privacy: .public) staged; installs on quit")
-            // Normal updates stay with Sparkle and its quiet install on quit.
+        // Critical updates deliberately use Sparkle's standard immediate
+        // presentation and escalation rules.
+        guard !item.isCriticalUpdate else {
+            if isRecoveringPendingUpdate {
+                isRecoveringPendingUpdate = false
+                updatePresentation.clear()
+                appState.releaseAutomaticPlaybackRestore()
+            }
+            updateLog.info("\(item.displayVersionString, privacy: .public) is critical; leaving presentation to Sparkle")
             return false
         }
 
-        // Recovery takes ownership so the install can happen now instead of at
-        // a quit that may never come: someone who only ever restarts would
-        // otherwise have this update orphaned by every reboot and restaged by
-        // every launch, forever.
+        let recovered = isRecoveringPendingUpdate
         isRecoveringPendingUpdate = false
-        updateLog.info("\(item.displayVersionString, privacy: .public) restaged; asking to install now")
+        updateLog.info(
+            "\(item.displayVersionString, privacy: .public) \(recovered ? "restaged" : "staged"); DIBar owns restart timing"
+        )
         DispatchQueue.main.async { [weak self] in
-            self?.promptToInstallPendingUpdate(
-                version: item.displayVersionString,
-                installNow: immediateInstallationBlock
+            self?.acceptPendingInstallation(
+                displayVersion: item.displayVersionString,
+                buildVersion: item.versionString,
+                installNow: immediateInstallationBlock,
+                recovered: recovered
             )
         }
         return true
@@ -548,6 +700,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             return
         }
         updateLog.error("Update aborted: \(error.localizedDescription, privacy: .public)")
+        handleUpdateFailure()
     }
 
     func updater(
@@ -558,6 +711,104 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         guard let error else { return }
         guard PendingUpdatePolicy.isReportableFailure(errorCode: (error as NSError).code) else { return }
         updateLog.error("Update cycle failed: \(error.localizedDescription, privacy: .public)")
+        handleUpdateFailure()
+    }
+
+    private func acceptPendingInstallation(
+        displayVersion: String,
+        buildVersion: String,
+        installNow: @escaping () -> Void,
+        recovered: Bool
+    ) {
+        pendingInstallation = PendingInstallation(
+            displayVersion: displayVersion,
+            buildVersion: buildVersion,
+            installNow: installNow
+        )
+        // Close the last possible race with bootstrap: once installation has
+        // been accepted, a saved station may not start before the next run loop.
+        appState.suppressAutomaticPlaybackRestore()
+
+        if installPendingUpdateIfIdle() {
+            updateLog.info(
+                "\(displayVersion, privacy: .public) \(recovered ? "recovered and " : "")installing while DIBar is idle"
+            )
+        } else {
+            updateLog.info("\(displayVersion, privacy: .public) ready; waiting for DIBar to become idle")
+            updatePresentation.showReady(version: displayVersion)
+        }
+    }
+
+    @discardableResult
+    private func installPendingUpdateIfIdle() -> Bool {
+        guard pendingInstallation != nil, !isInstallingUpdate else { return false }
+
+#if DEBUG
+        // The end-to-end smoke test needs to strand a real staged update before
+        // simulating reboot. Production builds never contain this launch hook.
+        if ProcessInfo.processInfo.arguments.contains("--dibar-update-smoke-busy") {
+            return false
+        }
+#endif
+
+        guard UpdateInstallPolicy.canInstallAutomatically(
+            isPlaying: appState.audioPlayer.isPlaying,
+            isPanelVisible: panel?.isVisible == true,
+            isSettingsVisible: settingsWindow?.isVisible == true,
+            isHistoryVisible: historyWindow?.isVisible == true
+        ) else {
+            return false
+        }
+
+        installPendingUpdate()
+        return true
+    }
+
+    private func installPendingUpdate() {
+        guard let pendingInstallation, !isInstallingUpdate else { return }
+        isInstallingUpdate = true
+        updatePresentation.clear()
+        updateLog.info(
+            "Installing \(pendingInstallation.displayVersion, privacy: .public) (\(pendingInstallation.buildVersion, privacy: .public)) and relaunching"
+        )
+        pendingInstallation.installNow()
+    }
+
+    private func performUpdateAction() {
+        if pendingInstallation != nil {
+            installPendingUpdate()
+            return
+        }
+
+        if case .failed = updatePresentation.phase {
+            Prefs.set(0, for: .pendingUpdateAttempts)
+            updatePresentation.clear()
+        }
+        updaterController.checkForUpdates(nil)
+    }
+
+    private func handleUpdateFailure() {
+        if let pendingInstallation {
+            self.pendingInstallation = nil
+            isInstallingUpdate = false
+            appState.releaseAutomaticPlaybackRestore()
+            updatePresentation.showFailed(version: pendingInstallation.displayVersion)
+            return
+        }
+
+        guard isRecoveringPendingUpdate else { return }
+        isRecoveringPendingUpdate = false
+        appState.releaseAutomaticPlaybackRestore()
+
+        let attempts = Prefs.int(.pendingUpdateAttempts) ?? 0
+        if attempts >= PendingUpdatePolicy.maxAttempts {
+            let version = Prefs.string(.pendingUpdateVersion)
+                ?? Prefs.string(.pendingUpdateBuild)
+                ?? "latest"
+            updatePresentation.showFailed(version: version)
+        } else {
+            updatePresentation.clear()
+        }
     }
 
     @objc func togglePanel(_ sender: Any?) {
@@ -600,6 +851,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
         appState.trackNotifier.popoverIsVisible = false
+        installPendingUpdateIfIdle()
+    }
+
+    // MARK: - Update idleness
+
+    /// Playback may stop after an update was staged. Re-arm Observation after
+    /// every change so a deferred update installs as soon as DIBar is safe.
+    private func startUpdateInstallObservation() {
+        withObservationTracking {
+            _ = appState.audioPlayer.isPlaying
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.installPendingUpdateIfIdle()
+                self.startUpdateInstallObservation()
+            }
+        }
     }
 
     // MARK: - Speaker animation
@@ -673,8 +941,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         let glyph = appState.menuBarShowPlayState
             ? MenuBarLabelRenderer.glyph(for: appState.audioPlayer)
             : MenuBarLabelRenderer.PlaybackGlyph.none
-        let showsUpdateBadge = updatePresentation.availableVersion != nil
-        let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)|\(showsUpdateBadge)"
+        let updatePhase = updatePresentation.phase
+        let showsUpdateBadge = updatePhase != nil
+        let key = "\(line1 ?? "")|\(line2 ?? "")|\(glyph)|\(String(describing: updatePhase))"
         guard key != lastLabelKey else { return }
         lastLabelKey = key
         button.image = MenuBarLabelRenderer.labelImage(
@@ -683,8 +952,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             glyph: glyph,
             showsUpdateBadge: showsUpdateBadge
         )
-        button.toolTip = showsUpdateBadge
-            ? "A DIBar update is available"
-            : nil
+        button.toolTip = updatePhase?.toolTip
     }
 }
