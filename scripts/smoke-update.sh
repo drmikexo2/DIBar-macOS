@@ -168,6 +168,19 @@ extracted_update_exists() {
     compgen -G "$HOME/Library/Caches/$SMOKE_ID"*"/org.sparkle-project.Sparkle/Installation/*/*/DIBar.app" >/dev/null
 }
 
+# Recovery asks before installing, so the test has to answer. Without this the
+# app sits on the modal forever and the run times out.
+click_install_and_relaunch() {
+    osascript -e 'tell application "System Events" to tell process "DIBar" to click button "Install and Relaunch" of window 1' \
+        >/dev/null 2>&1
+}
+
+prompt_was_logged() {
+    /usr/bin/log show --predicate \
+        'subsystem == "com.dibar" AND category == "Updates"' \
+        --last 3m --info --style compact 2>/dev/null | grep -q "was downloaded but not installed"
+}
+
 recheck_was_logged() {
     /usr/bin/log show --predicate \
         'subsystem == "com.dibar" AND category == "Updates"' \
@@ -259,16 +272,22 @@ run_scenario() {
     info "still $OLD_VERSION after the interruption, as expected"
 
     open "$INSTALL_APP"
-    if wait_for 90 "recheck" recheck_was_logged; then
-        info "recovery recheck logged"
+    if wait_for 90 "recovery prompt" prompt_was_logged; then
+        info "recovery prompt logged"
+        # Answer the modal. The pre-fix baseline never shows one, so this is a
+        # no-op there and the scenario still ends on the old version.
+        wait_for 30 "install button" click_install_and_relaunch && info "clicked Install and Relaunch"
     else
-        info "no recovery recheck logged"
+        info "no recovery prompt"
     fi
 
-    # SUAutomaticallyUpdate installs on quit, so the graceful quit is what
-    # completes a recovered update.
-    osascript -e "tell application id \"$SMOKE_ID\" to quit" >/dev/null 2>&1 || true
-    wait_for 90 "install" installed_is_new_version || true
+    wait_for 120 "install" installed_is_new_version || true
+    # Fall back to a graceful quit, which completes an install that was staged
+    # for quit rather than performed immediately.
+    if ! installed_is_new_version; then
+        osascript -e "tell application id \"$SMOKE_ID\" to quit" >/dev/null 2>&1 || true
+        wait_for 60 "install on quit" installed_is_new_version || true
+    fi
     sleep 3
     kill_smoke_processes
 

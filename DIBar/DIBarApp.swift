@@ -412,6 +412,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
+    /// Set while a launch-time recovery is in flight, so that cycle prompts and
+    /// installs immediately instead of staging quietly for a quit.
+    private var isRecoveringPendingUpdate = false
+
     /// An update that finished downloading but never installed leaves Sparkle
     /// with nothing to resume from after a relaunch, so ask it to check again
     /// now rather than waiting out the 24-hour schedule.
@@ -439,11 +443,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
             return
         }
 
+        guard let pending else { return }
         Prefs.set(attempts + 1, for: .pendingUpdateAttempts)
+        isRecoveringPendingUpdate = true
         updateLog.info(
-            "Update \(pending ?? "", privacy: .public) was downloaded but not installed; rechecking (attempt \(attempts + 1))"
+            "Update \(pending, privacy: .public) was downloaded but not installed; rechecking (attempt \(attempts + 1))"
         )
+        // The background variant on purpose. checkForUpdates(_:) is the
+        // user-initiated path and Sparkle rejects it here with
+        // "sessionInProgress == YES", because its own cycle is still running
+        // this early in launch. The background check restages the update and
+        // hands us an immediate-install block via willInstallUpdateOnQuit.
         updaterController.updater.checkForUpdatesInBackground()
+    }
+
+    /// Sparkle will not ask on its own here. With SUAutomaticallyUpdate set,
+    /// its automatic driver never consults the user driver's presentation hook
+    /// and simply stages for a quit. So DIBar owns this one prompt, at launch,
+    /// where a stranded update is guaranteed to be noticed.
+    private func promptToInstallPendingUpdate(version: String, installNow: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "DIBar \(version) is ready to install"
+        alert.informativeText =
+            "This update was downloaded earlier but never finished installing. DIBar will relaunch."
+        alert.addButton(withTitle: "Install and Relaunch")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            // The pending record stays, so the next launch asks again. Nothing
+            // is lost by declining, and the attempt count was already reset
+            // when the update staged, so declining cannot exhaust the retries.
+            updateLog.info("Install of \(version, privacy: .public) deferred; will ask again next launch")
+            return
+        }
+
+        updateLog.info("Installing \(version, privacy: .public) now")
+        installNow()
     }
 
     private func clearPendingUpdate() {
@@ -470,6 +506,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
     func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
         updateLog.info("Extracted \(item.displayVersionString, privacy: .public); awaiting install")
         Prefs.set(item.displayVersionString, for: .pendingUpdateVersion)
+        // Staging worked, so the pipeline is healthy and any further delay is
+        // the user's choice, not a failure. Resetting here keeps "Later" from
+        // burning through the retry budget and abandoning the update.
+        Prefs.set(0, for: .pendingUpdateAttempts)
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
@@ -481,9 +521,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         willInstallUpdateOnQuit item: SUAppcastItem,
         immediateInstallationBlock: @escaping () -> Void
     ) -> Bool {
-        updateLog.info("\(item.displayVersionString, privacy: .public) staged; installs on quit")
-        // Returning true would hand the install to DIBar; leave it with Sparkle.
-        return false
+        guard isRecoveringPendingUpdate else {
+            updateLog.info("\(item.displayVersionString, privacy: .public) staged; installs on quit")
+            // Normal updates stay with Sparkle and its quiet install on quit.
+            return false
+        }
+
+        // Recovery takes ownership so the install can happen now instead of at
+        // a quit that may never come: someone who only ever restarts would
+        // otherwise have this update orphaned by every reboot and restaged by
+        // every launch, forever.
+        isRecoveringPendingUpdate = false
+        updateLog.info("\(item.displayVersionString, privacy: .public) restaged; asking to install now")
+        DispatchQueue.main.async { [weak self] in
+            self?.promptToInstallPendingUpdate(
+                version: item.displayVersionString,
+                installNow: immediateInstallationBlock
+            )
+        }
+        return true
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
