@@ -34,6 +34,8 @@ enum Prefs {
         case sleepTimerCustomMinutes = "sleep_timer_custom_minutes"
         case lastFMSessionKey = "lastfm_session_key"
         case lastFMUsername = "lastfm_username"
+        case pendingUpdateVersion = "pending_update_version"
+        case pendingUpdateAttempts = "pending_update_attempts"
     }
 
     /// Keys stored once per network, as "<key>.<network>".

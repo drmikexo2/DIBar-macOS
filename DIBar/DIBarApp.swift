@@ -3,6 +3,10 @@ import Sparkle
 import os
 
 private let log = Logger(subsystem: "com.dibar", category: "App")
+/// Update outcomes go to their own category: a stalled update is otherwise
+/// indistinguishable from "no update available", since scheduled updates
+/// install silently and never present a dialog.
+private let updateLog = Logger(subsystem: "com.dibar", category: "Updates")
 
 // The menu bar item is managed directly via NSStatusItem instead of
 // MenuBarExtra: MenuBarExtra's label pipeline only renders single-line Text
@@ -118,6 +122,37 @@ enum UpdateReminderPolicy {
     }
 }
 
+/// Sparkle keeps a downloaded-but-uninstalled update only in memory
+/// (`SPUUpdater._resumableUpdate`) and otherwise resumes solely by probing for
+/// a still-running installer process. A restart between download and install
+/// loses both, stranding a verified update in the cache until the next
+/// scheduled check, which is 24 hours out. DIBar therefore records what was
+/// staged and asks Sparkle to check again on the next launch.
+enum PendingUpdatePolicy {
+    /// Stop retrying after this many launches so a permanently failing install
+    /// does not check on every launch forever.
+    static let maxAttempts = 3
+
+    static func shouldResume(pendingVersion: String?, runningVersion: String, attempts: Int) -> Bool {
+        guard let pendingVersion, !pendingVersion.isEmpty else { return false }
+        // Equal versions mean the install already landed.
+        guard pendingVersion != runningVersion else { return false }
+        return attempts < maxAttempts
+    }
+
+    /// True once the staged version is the one actually running.
+    static func didInstall(pendingVersion: String?, runningVersion: String) -> Bool {
+        guard let pendingVersion, !pendingVersion.isEmpty else { return false }
+        return pendingVersion == runningVersion
+    }
+
+    /// `didAbortWithError` also fires for the ordinary "already up to date"
+    /// outcome, which must not be logged as a failure.
+    static func isReportableFailure(errorCode: Int) -> Bool {
+        errorCode != Int(SUError.noUpdateError.rawValue)
+    }
+}
+
 /// Removing MenuBarView from the hierarchy on close releases its SwiftUI
 /// display graph and disconnects TimelineView and playback observations. The
 /// tiny placeholder keeps the hosting controller valid without retaining the
@@ -162,7 +197,8 @@ private extension NSImage {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate,
+                         @preconcurrency SPUUpdaterDelegate {
     // Internal (not private) so DIBarApp+Debug.swift can drive the app.
     var appState: AppState!
     private var statusItem: NSStatusItem!
@@ -178,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
     // schedules the automatic background checks.
     private lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
-        updaterDelegate: nil,
+        updaterDelegate: self,
         userDriverDelegate: self
     )
 
@@ -186,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         // Prefs migrates itself lazily on first access, so no ordering here.
         appState = AppState()
         _ = updaterController
+        resumePendingUpdateIfNeeded()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
@@ -367,6 +404,104 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
 
     func standardUserDriverWillFinishUpdateSession() {
         updatePresentation.clear()
+    }
+
+    // MARK: - Update outcomes
+
+    private static var runningVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    /// An update that finished downloading but never installed leaves Sparkle
+    /// with nothing to resume from after a relaunch, so ask it to check again
+    /// now rather than waiting out the 24-hour schedule.
+    private func resumePendingUpdateIfNeeded() {
+        let pending = Prefs.string(.pendingUpdateVersion)
+        let running = Self.runningVersion
+
+        if PendingUpdatePolicy.didInstall(pendingVersion: pending, runningVersion: running) {
+            updateLog.info("Update to \(running, privacy: .public) installed; clearing pending state")
+            clearPendingUpdate()
+            return
+        }
+
+        let attempts = Prefs.int(.pendingUpdateAttempts) ?? 0
+        guard PendingUpdatePolicy.shouldResume(
+            pendingVersion: pending,
+            runningVersion: running,
+            attempts: attempts
+        ) else {
+            if let pending, !pending.isEmpty {
+                updateLog.error(
+                    "Update \(pending, privacy: .public) still not installed after \(attempts) attempts; giving up"
+                )
+            }
+            return
+        }
+
+        Prefs.set(attempts + 1, for: .pendingUpdateAttempts)
+        updateLog.info(
+            "Update \(pending ?? "", privacy: .public) was downloaded but not installed; rechecking (attempt \(attempts + 1))"
+        )
+        updaterController.updater.checkForUpdatesInBackground()
+    }
+
+    private func clearPendingUpdate() {
+        Prefs.set(nil, for: .pendingUpdateVersion)
+        Prefs.set(0, for: .pendingUpdateAttempts)
+    }
+
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        updateLog.info("Found update \(item.displayVersionString, privacy: .public)")
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
+        updateLog.info("No update available: \(error.localizedDescription, privacy: .public)")
+        // Nothing is staged any more, so a recorded pending version is stale.
+        clearPendingUpdate()
+    }
+
+    func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: any Error) {
+        updateLog.error(
+            "Failed to download \(item.displayVersionString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        )
+    }
+
+    func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
+        updateLog.info("Extracted \(item.displayVersionString, privacy: .public); awaiting install")
+        Prefs.set(item.displayVersionString, for: .pendingUpdateVersion)
+    }
+
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        updateLog.info("Installing \(item.displayVersionString, privacy: .public)")
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        willInstallUpdateOnQuit item: SUAppcastItem,
+        immediateInstallationBlock: @escaping () -> Void
+    ) -> Bool {
+        updateLog.info("\(item.displayVersionString, privacy: .public) staged; installs on quit")
+        // Returning true would hand the install to DIBar; leave it with Sparkle.
+        return false
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+        guard PendingUpdatePolicy.isReportableFailure(errorCode: (error as NSError).code) else {
+            updateLog.info("Update cycle ended: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        updateLog.error("Update aborted: \(error.localizedDescription, privacy: .public)")
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+        error: (any Error)?
+    ) {
+        guard let error else { return }
+        guard PendingUpdatePolicy.isReportableFailure(errorCode: (error as NSError).code) else { return }
+        updateLog.error("Update cycle failed: \(error.localizedDescription, privacy: .public)")
     }
 
     @objc func togglePanel(_ sender: Any?) {

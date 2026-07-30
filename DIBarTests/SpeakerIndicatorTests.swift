@@ -124,6 +124,59 @@ final class UpdateReminderTests: XCTestCase {
         ))
     }
 
+    func testResumesWhenAStagedUpdateIsNotTheRunningVersion() {
+        XCTAssertTrue(PendingUpdatePolicy.shouldResume(
+            pendingVersion: "1.4.2",
+            runningVersion: "1.4.1",
+            attempts: 0
+        ))
+    }
+
+    func testDoesNotResumeWhenNothingIsStaged() {
+        XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingVersion: nil,
+            runningVersion: "1.4.1",
+            attempts: 0
+        ))
+        XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingVersion: "",
+            runningVersion: "1.4.1",
+            attempts: 0
+        ))
+    }
+
+    func testDoesNotResumeOnceTheStagedVersionIsRunning() {
+        XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingVersion: "1.4.2",
+            runningVersion: "1.4.2",
+            attempts: 0
+        ))
+        XCTAssertTrue(PendingUpdatePolicy.didInstall(pendingVersion: "1.4.2", runningVersion: "1.4.2"))
+        XCTAssertFalse(PendingUpdatePolicy.didInstall(pendingVersion: "1.4.2", runningVersion: "1.4.1"))
+        XCTAssertFalse(PendingUpdatePolicy.didInstall(pendingVersion: nil, runningVersion: "1.4.2"))
+    }
+
+    func testGivesUpAfterRepeatedFailedAttempts() {
+        let last = PendingUpdatePolicy.maxAttempts - 1
+        XCTAssertTrue(PendingUpdatePolicy.shouldResume(
+            pendingVersion: "1.4.2",
+            runningVersion: "1.4.1",
+            attempts: last
+        ))
+        XCTAssertFalse(PendingUpdatePolicy.shouldResume(
+            pendingVersion: "1.4.2",
+            runningVersion: "1.4.1",
+            attempts: PendingUpdatePolicy.maxAttempts
+        ))
+    }
+
+    func testUpToDateIsNotReportedAsAFailure() {
+        // SUNoUpdateError; Sparkle routes the ordinary up-to-date result
+        // through the same abort callback as real failures.
+        XCTAssertFalse(PendingUpdatePolicy.isReportableFailure(errorCode: 1001))
+        XCTAssertTrue(PendingUpdatePolicy.isReportableFailure(errorCode: 4001))
+    }
+
     func testPresentationStateShowsAndClearsAvailableVersion() async {
         await MainActor.run {
             let state = UpdatePresentationState()
