@@ -23,7 +23,8 @@ struct AutomaticPlaybackRestorePolicy {
         self.isSuppressed = isSuppressed
     }
 
-    mutating func requestRestore() -> Bool {
+    mutating func requestRestore(isEnabled: Bool) -> Bool {
+        guard isEnabled else { return false }
         guard !isSuppressed else {
             restoreWasDeferred = true
             return false
@@ -41,11 +42,11 @@ struct AutomaticPlaybackRestorePolicy {
 
     /// Returns true when releasing the gate should perform the deferred
     /// automatic restore now.
-    mutating func release() -> Bool {
+    mutating func release(isEnabled: Bool) -> Bool {
         isSuppressed = false
         guard restoreWasDeferred else { return false }
         restoreWasDeferred = false
-        return true
+        return isEnabled
     }
 }
 
@@ -146,6 +147,9 @@ final class AppState {
     }
 
     // Settings
+    var playOnLaunch: Bool = Prefs.bool(.playOnLaunch, default: true) {
+        didSet { Prefs.set(playOnLaunch, for: .playOnLaunch) }
+    }
     var selectedQuality: StreamQuality =
         Prefs.string(.quality).flatMap(StreamQuality.init(rawValue:)) ?? .premiumHigh
     var subscriptions: [MembershipSubscription] = []
@@ -192,6 +196,13 @@ final class AppState {
 
     var channels: [Channel] {
         networkDataCache[selectedNetwork]?.channels ?? []
+    }
+
+    var canPlaySavedStation: Bool { savedChannelForSelectedNetwork != nil }
+
+    var savedChannelForSelectedNetwork: Channel? {
+        guard let channelId = Prefs.int(.lastStationId, network: selectedNetwork) else { return nil }
+        return channels.first { $0.id == channelId }
     }
 
     /// The networks the channel list currently shows.
@@ -409,7 +420,7 @@ final class AppState {
     /// Release a recovery gate. If bootstrap reached the restore point while
     /// suppressed, perform it once now unless explicit playback superseded it.
     func releaseAutomaticPlaybackRestore() {
-        guard automaticPlaybackRestorePolicy.release() else { return }
+        guard automaticPlaybackRestorePolicy.release(isEnabled: playOnLaunch) else { return }
         restoreSavedStationIfNeeded()
     }
 
@@ -578,6 +589,11 @@ final class AppState {
     }
 
     func togglePlayPause() {
+        if audioPlayer.currentChannel == nil {
+            guard let channel = savedChannelForSelectedNetwork else { return }
+            playChannel(channel, on: selectedNetwork)
+            return
+        }
         audioPlayer.togglePlayPause()
     }
 
@@ -625,8 +641,7 @@ final class AppState {
 
     private func restoreSavedStationIfNeeded() {
         guard audioPlayer.currentChannel == nil else { return }
-        guard automaticPlaybackRestorePolicy.requestRestore() else {
-            log.info("restoreSavedStationIfNeeded: deferred for pending update")
+        guard automaticPlaybackRestorePolicy.requestRestore(isEnabled: playOnLaunch) else {
             return
         }
         guard let channelId = Prefs.int(.lastStationId, network: selectedNetwork) else { return }

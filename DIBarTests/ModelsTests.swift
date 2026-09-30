@@ -3,6 +3,17 @@ import UserNotifications
 @testable import DIBar
 
 final class ModelsTests: XCTestCase {
+    func testPlayOnLaunchPreferenceDefaultsOnAndPersistsOff() {
+        let saved = Prefs.string(.playOnLaunch)
+        defer { Prefs.set(saved, for: .playOnLaunch) }
+
+        Prefs.set(nil, for: .playOnLaunch)
+        XCTAssertTrue(Prefs.bool(.playOnLaunch, default: true))
+
+        Prefs.set(false, for: .playOnLaunch)
+        XCTAssertFalse(Prefs.bool(.playOnLaunch, default: true))
+    }
+
     // MARK: - Notification authorization
 
     func testNotificationAuthorizationStatusMapping() {

@@ -21,7 +21,7 @@
 - **Song actions**: copy artist and title, or search the current song on Spotify, Apple Music, and YouTube.
 - **Stream quality selection**: 320k MP3, 128k AAC, or 64k AAC.
 - **Self-healing streams**: network drops, stalls, and sleep/wake trigger an automatic reconnect with visible Buffering and Reconnecting states.
-- **Remembers your channel**: resumes the last channel per site on launch.
+- **Remembers your channel**: optionally plays the last channel on launch, controlled in Settings.
 
 ### Control it from anywhere
 

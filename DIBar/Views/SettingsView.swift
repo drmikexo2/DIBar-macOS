@@ -63,6 +63,15 @@ struct SettingsWindowView: View {
 
             Divider()
 
+            settingsRow("Play on launch") {
+                Toggle("", isOn: Bindable(appState).playOnLaunch)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .help("Automatically play the last channel when DIBar opens. Turning this off does not change Launch at login.")
+
+            Divider()
+
             settingsRow("Global shortcuts") {
                 Toggle("", isOn: Bindable(appState).globalHotkeysEnabled)
                     .toggleStyle(.checkbox)

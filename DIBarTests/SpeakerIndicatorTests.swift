@@ -343,27 +343,44 @@ final class AutomaticPlaybackRestorePolicyTests: XCTestCase {
     func testPendingUpdateDefersAndReleasesAutoplayOnce() {
         var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
 
-        XCTAssertFalse(policy.requestRestore())
+        XCTAssertFalse(policy.requestRestore(isEnabled: true))
         XCTAssertTrue(policy.restoreWasDeferred)
-        XCTAssertTrue(policy.release())
-        XCTAssertFalse(policy.release())
-        XCTAssertTrue(policy.requestRestore())
+        XCTAssertTrue(policy.release(isEnabled: true))
+        XCTAssertFalse(policy.release(isEnabled: true))
+        XCTAssertTrue(policy.requestRestore(isEnabled: true))
     }
 
     func testExplicitPlaybackSupersedesDeferredAutoplay() {
         var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
 
-        XCTAssertFalse(policy.requestRestore())
+        XCTAssertFalse(policy.requestRestore(isEnabled: true))
         policy.noteExplicitPlayback()
-        XCTAssertFalse(policy.release())
+        XCTAssertFalse(policy.release(isEnabled: true))
     }
 
     func testLateSuppressionStillGatesUpcomingAutoplay() {
         var policy = AutomaticPlaybackRestorePolicy()
 
         policy.suppress()
-        XCTAssertFalse(policy.requestRestore())
-        XCTAssertTrue(policy.release())
+        XCTAssertFalse(policy.requestRestore(isEnabled: true))
+        XCTAssertTrue(policy.release(isEnabled: true))
+    }
+
+    func testDisabledAutoplayNeverDefersOrResumes() {
+        var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
+
+        XCTAssertFalse(policy.requestRestore(isEnabled: false))
+        XCTAssertFalse(policy.restoreWasDeferred)
+        XCTAssertFalse(policy.release(isEnabled: false))
+        XCTAssertFalse(policy.requestRestore(isEnabled: false))
+    }
+
+    func testTurningAutoplayOffDiscardsDeferredRestore() {
+        var policy = AutomaticPlaybackRestorePolicy(isSuppressed: true)
+
+        XCTAssertFalse(policy.requestRestore(isEnabled: true))
+        XCTAssertFalse(policy.release(isEnabled: false))
+        XCTAssertFalse(policy.restoreWasDeferred)
     }
 }
 

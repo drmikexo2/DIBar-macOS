@@ -7,6 +7,8 @@ struct PlayerControlsView: View {
     @Environment(AppState.self) private var appState
 
     private var player: AudioPlayer { appState.audioPlayer }
+    private var playbackChannel: Channel? { player.currentChannel ?? appState.savedChannelForSelectedNetwork }
+    private var playbackNetwork: Network { player.currentNetwork ?? appState.selectedNetwork }
     private let expandedArtSize: CGFloat = 220
 
     var body: some View {
@@ -23,6 +25,16 @@ struct PlayerControlsView: View {
                         trackInfoView(track: track, lineLimit: 1)
                         Spacer(minLength: 0)
                     }
+                }
+            } else if let channel = playbackChannel {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        channelLine(name: channel.name, network: playbackNetwork)
+                        Text("Paused")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
             } else {
                 Text("Not Playing")
@@ -92,7 +104,8 @@ struct PlayerControlsView: View {
                 .font(.system(size: 28))
         }
         .buttonStyle(.plain)
-        .disabled(player.currentChannel == nil)
+        .disabled(player.currentChannel == nil && !appState.canPlaySavedStation)
+        .help(player.isPlaying ? "Pause" : playbackChannel.map { "Play \($0.name)" } ?? "Play")
     }
 
     private var collapsedArtwork: some View {
@@ -144,7 +157,7 @@ struct PlayerControlsView: View {
     private func trackInfoView(track: NowPlaying, lineLimit: Int) -> some View {
         let hasSongMetadata = !(track.artist.isEmpty && track.title.isEmpty)
         let info = VStack(alignment: .leading, spacing: 2) {
-            channelLine(track: track)
+            channelLine(name: track.channelName, network: player.currentNetwork)
 
             Text(track.displayText)
                 .font(.system(size: 11))
@@ -164,9 +177,8 @@ struct PlayerControlsView: View {
     /// "Channel · Network"; when browsing a different network than the one
     /// playing, tapping it jumps back to the playing network's station list.
     @ViewBuilder
-    private func channelLine(track: NowPlaying) -> some View {
-        let network = player.currentNetwork
-        let label = network.map { "\(track.channelName) · \($0.displayName)" } ?? track.channelName
+    private func channelLine(name: String, network: Network?) -> some View {
+        let label = network.map { "\(name) · \($0.displayName)" } ?? name
         // In All-Sites mode the playing channel is already on screen, and the
         // jump would drop the user out of All mode — plain text instead.
         if let network, !appState.allNetworksSelected, network != appState.selectedNetwork {
